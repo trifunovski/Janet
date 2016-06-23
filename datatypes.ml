@@ -140,16 +140,15 @@ module Ctx : CONTEXT_JUDGEMENT =
 
 type ctx = Ctx.ctx
 
-(*
 
 module type RENAMING =
 sig
     type renaming
     val emptyRenaming : unit -> renaming
     val varRenaming : var * var * variance * cat -> renaming
-    val commaRenaming : renaming -> renaming -> renaming option
+    val commaRenaming : renaming -> renaming -> renaming
     val idRenaming : context -> renaming
-    val compositionRenaming : renaming -> renaming -> renaming option
+    val compositionRenaming : renaming -> renaming -> renaming
     val inverseRenaming : renaming -> renaming
     val flipRenaming : renaming -> renaming
 end
@@ -177,36 +176,28 @@ module Renaming : RENAMING =
       | InverseRenaming r1 -> InverseRenaming (applyToSubs f r1)
       | FlipRenaming r1 -> FlipRenaming (applyToSubs f r1)
 
-    let emptyRenaming (_ : unit) = (Context.empty (), EmptyRenaming, Context.empty ())
+    let emptyRenaming (_ : unit) = (Emp, EmptyRenaming, Emp)
 
     let varRenaming (x , y , v , c) =
-      (Context.single (x,v,c) , SingleRenaming (x,y,v), Context.single (y,v,c))
+      (Sin (x,v,c) , SingleRenaming (x,y,v), Sin (y,v,c))
 
     let commaRenaming (psi1 , r1 , psi1') (psi2 , r2 , psi2') =
-      match ((Context.comma psi1 psi2) , (Context.comma psi1' psi2')) with
-      | (Some psi3 , Some psi4) -> Some (psi3 , CommaRenaming (r1 , r2) , psi4)
-      | _ -> None
+      (Com (psi1 , psi2) , CommaRenaming (r1 , r2) , Com (psi1' , psi2'))
 
-    let idRenaming (psi : ctx) = (psi , IdRenaming , psi)
+    let idRenaming (psi : context) = (psi , IdRenaming , psi)
 
     let compositionRenaming r1 r2 =
       match (r1 , r2) with
       | ((psi1 , rnm1 , psi2) , (psi2' , rnm2 , psi3)) when psi2 = psi2' ->
-        Some (psi1 , CompositionRenaming (rnm1 , rnm2) , psi3)
-      | _ -> None
+        (psi1 , CompositionRenaming (rnm1 , rnm2) , psi3)
+      | _ -> failwith "Bad composition of renamings"
     let inverseRenaming (psi1 , r , psi2) = (psi2, applyToSubs (fun (x , y , v) -> (y , x , v)) r, psi1)
 
     let flipRenaming (psi1 , r , psi2) =
-          (Context.flip psi1, applyToSubs (fun (x , y , v) -> (x , y, flipVar v)) r,
-           Context.flip psi2)
+          (flipContext psi1, applyToSubs (fun (x , y , v) -> (x , y, flipVar v)) r,
+           flipContext psi2)
   end;;
-
-module Rename (PSI1 : CONTEXT) (RHO : RENAMING) (PSI2 : CONTEXT) =
-  struct
-
-  end
 
 type renaming = Renaming.renaming
 
 let flipRenaming : renaming -> renaming = Renaming.flipRenaming
-*)
