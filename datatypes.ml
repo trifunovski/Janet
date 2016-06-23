@@ -34,11 +34,29 @@ let flipVar (v : variance) = if v = Pos then Neg else Pos
 
 type context = Emp | Sin of term | Com of context * context
 
-let flipContext (psi : context) =
+let rec flipContext (psi : context) =
   match psi with
   | Emp -> Emp
   | Sin (x , v , c) -> Sin (x , flipVar v , c)
-  | Comma (psi1 , psi2) -> Comma (flipContext psi1 , flipContext psi2)
+  | Com (psi1 , psi2) -> Com (flipContext psi1 , flipContext psi2)
+
+let rec no_dups ((x , v , c) : term) (psi : context) =
+  match psi with
+  | Emp -> true
+  | Sin (x' , v' , c') -> if x = x' then c = c' && (v <> v') else true
+  | Com (psi1 , psi2) -> no_dups (x , v, c) psi1 && no_dups (x , v , c) psi2
+
+let rec valid (psi1 : context) (psi2 : context) =
+  match psi1 with
+  | Emp -> true
+  | Sin (x , v , c) -> no_dups (x , v , c) psi2
+  | Com (psi1a, psi1b) -> valid psi1a psi2 && valid psi1b psi2
+
+(*
+let rec belongs (x, v, c) = function
+  | Sin (x , v', c') -> v = v' && c = c'
+  | Com (psi1 , psi2) -> belongs (x, v, c) psi1 || belongs (x, v, c) psi2
+  | _ -> false
 
 module type MEMBERSHIP =
 sig
@@ -60,6 +78,9 @@ module Membership : MEMBERSHIP =
       | Solo (t , psi2) -> Mult (t , psi1 , psi2)
       | Mult (t , psi2a , psi2b) -> Mult (t , psi1 , Com (psi2a , psi2b))
   end
+
+*)
+  
 module type EQUIVALENCE =
 sig
     type equiv
@@ -92,59 +113,34 @@ sig
     val emptyJudge : context -> ctx
     val singleJudge : context -> ctx
     val commaJudge : ctx -> ctx -> ctx
-    val belongs : term -> ctx -> bool
     val flipJudge : ctx -> ctx
 end;;
 module Ctx : CONTEXT_JUDGEMENT =
   struct
-    type ctx = Empty | Comma of ctx * ctx | Single of term
+    type ctx = Context of context
 
-    let rec flipJudge (psi : ctx) =
-      match psi with
-      | Empty -> Empty
-      | Single (x , v , c) -> Single (x , flipVar v , c)
-      | Comma (psi1 , psi2) -> Comma (flipJudge psi1 , flipJudge psi2)
-
-    let rec no_dups ((x , v , c) : term) (psi : ctx) =
-      match psi with
-      | Empty -> true
-      | Single (x' , v' , c') -> if x = x' then c = c' && (v <> v') else true
-      | Comma (psi1 , psi2) -> no_dups (x , v, c) psi1 && no_dups (x , v , c) psi2
-
-    let rec valid (psi1 : ctx) (psi2 : ctx) =
-      match psi1 with
-      | Empty -> true
-      | Single (x , v , c) -> no_dups (x , v , c) psi2
-      | Comma (psi1a, psi1b) -> valid psi1a psi2 && valid psi1b psi2
+    let rec flipJudge ((Context (psi)) : ctx) = Context (flipContext psi)
 
     let emptyJudge = function
-      | Emp -> Empty
+      | Emp -> Context (Emp)
       | _ -> failwith "Bad context given for empty"
 
     let singleJudge = function
-      | Sin t -> Single t
+      | Sin t -> Context (Sin t)
       | _ -> failwith "Bad context given for single"
 
-    let commaJudge (psi1 : ctx) (psi2 : ctx) =
+    let commaJudge ((Context (psi1)) : ctx) ((Context (psi2)) : ctx) =
       match valid psi1 psi2 with
-      | true -> Comma (psi1 , psi2)
+      | true -> Context (Com (psi1 , psi2))
       | _ -> failwith "contexts are not compatible"
 
-    let rec belongs (x, v, c) = function
-      | Single (x , v', c') -> v = v' && c = c'
-      | Comma (psi1 , psi2) -> belongs (x, v, c) psi1 || belongs (x, v, c) psi2
-      | _ -> false
-
-    let rec toContext = function
-      | Empty -> Emp
-      | Single t -> Sin t
-      | Comma (psi1 , psi2) -> Com (toContext psi1 , toContext psi2)
+    let rec toContext (Context psi) = psi
 
   end;;
 
 type ctx = Ctx.ctx
 
-
+(*
 
 module type RENAMING =
 sig
@@ -213,3 +209,4 @@ module Rename (PSI1 : CONTEXT) (RHO : RENAMING) (PSI2 : CONTEXT) =
 type renaming = Renaming.renaming
 
 let flipRenaming : renaming -> renaming = Renaming.flipRenaming
+*)
