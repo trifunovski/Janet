@@ -84,15 +84,20 @@ module Membership : MEMBERSHIP =
 module type CONTEXT_JUDGEMENT =
 sig
     type ctx
+    type equiv
     val emptyJudge : context -> ctx
     val singleJudge : context -> ctx
     val commaJudge : ctx -> ctx -> ctx
     val flipJudge : ctx -> ctx
+    val comm : context -> equiv
+    val assoc : context -> equiv
+    val unitL : context -> equiv
+    val unitR : context -> equiv
 end;;
 module Ctx : CONTEXT_JUDGEMENT =
   struct
     type ctx = Context of context
-
+    type equiv = Equiv of context * context
     let rec flipJudge ((Context (psi)) : ctx) = Context (flipContext psi)
 
     let emptyJudge = function
@@ -109,23 +114,6 @@ module Ctx : CONTEXT_JUDGEMENT =
       | _ -> failwith "contexts are not compatible"
 
     let rec toContext (Context psi) = psi
-
-  end;;
-
-type ctx = Ctx.ctx
-
-module type EQUIVALENCE =
-sig
-    type equiv
-    val comm : context -> equiv
-    val assoc : context -> equiv
-    val unitL : context -> equiv
-    val unitR : context -> equiv
-end
-module Equivalence : EQUIVALENCE =
-  struct
-    open Ctx
-    type equiv = Equiv of context * context
 
     let comm = function
       | (Com(psi1 , psi2)) -> Equiv (Com (psi1 , psi2) , Com (psi2 , psi1))
@@ -148,8 +136,9 @@ module Equivalence : EQUIVALENCE =
       | Equiv (psi1 , psi2) when psi = psi1 -> Context psi2
       | Equiv (psi1 , psi2) when psi = psi2 -> Context psi1
       | _ -> failwith "WellFormednessEquiv"
-  end
+  end;;
 
+type ctx = Ctx.ctx
 
 (*
 
