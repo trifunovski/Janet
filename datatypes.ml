@@ -80,32 +80,6 @@ module Membership : MEMBERSHIP =
   end
 
 *)
-  
-module type EQUIVALENCE =
-sig
-    type equiv
-    val comm : context -> equiv
-    val assoc : context -> equiv
-    val unitL : context -> equiv
-    val unitR : context -> equiv
-end
-module Equivalence : EQUIVALENCE =
-  struct
-    type equiv = Comm of context * context | Assoc of context * context * context
-      | UnitL of context | UnitR of context
-
-    let comm = function
-      | (Com(psi1 , psi2)) -> Comm (psi1 , psi2)
-      | _ -> failwith "COMMUTATIVITY"
-
-    let assoc = function
-      | (Com(Com(psi1 , psi2), psi3)) -> Assoc (psi1 , psi2 , psi3)
-      | _ -> failwith "ASSOCIATIVITY"
-
-    let unitL psi = UnitL psi
-
-    let unitR psi = UnitR psi
-  end
 
 module type CONTEXT_JUDGEMENT =
 sig
@@ -139,6 +113,43 @@ module Ctx : CONTEXT_JUDGEMENT =
   end;;
 
 type ctx = Ctx.ctx
+
+module type EQUIVALENCE =
+sig
+    type equiv
+    val comm : context -> equiv
+    val assoc : context -> equiv
+    val unitL : context -> equiv
+    val unitR : context -> equiv
+end
+module Equivalence : EQUIVALENCE =
+  struct
+    open Ctx
+    type equiv = Equiv of context * context
+
+    let comm = function
+      | (Com(psi1 , psi2)) -> Equiv (Com (psi1 , psi2) , Com (psi2 , psi1))
+      | _ -> failwith "COMMUTATIVITY"
+
+    let assoc = function
+      | (Com(Com(psi1 , psi2), psi3)) -> Equiv ((Com ((Com (psi1 , psi2)) , psi3)) ,
+          (Com (psi1 , (Com (psi2 , psi3)))))
+      | _ -> failwith "ASSOCIATIVITY"
+
+    let unitL = function
+      | Com (Emp , psi) -> Equiv (Com (Emp , psi) , psi)
+      | _ -> failwith "UNITLEFT"
+
+    let unitR = function
+      | Com (psi , Emp) -> Equiv (Com (psi , Emp) , psi)
+      | _ -> failwith "UNITRIGHT"
+
+    let wellFormedEquiv (Context (psi)) = function
+      | Equiv (psi1 , psi2) when psi = psi1 -> Context psi2
+      | Equiv (psi1 , psi2) when psi = psi2 -> Context psi1
+      | _ -> failwith "WellFormednessEquiv"
+  end
+
 
 (*
 
