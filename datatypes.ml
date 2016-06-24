@@ -144,6 +144,7 @@ type ctx = Ctx.ctx
 module type RENAMING =
 sig
     type renaming
+    type equivren
     val emptyRenaming : unit -> renaming
     val varRenaming : var * var * variance * cat -> renaming
     val commaRenaming : renaming -> renaming -> renaming
@@ -157,12 +158,13 @@ module Renaming : RENAMING =
     type rnm = EmptyRenaming
              | SingleRenaming of var * var * variance
              | CommaRenaming of rnm * rnm
-             | IdRenaming
+             | IdRenaming of context
              | CompositionRenaming of rnm * rnm
              | InverseRenaming of rnm
              | FlipRenaming of rnm
 
-    type renaming = context * rnm * context
+    type renaming = Renaming of context * rnm * context
+    type equivren = EquivRen of rnm * rnm
 
     let rec applyToSubs (f : (var * var * variance) -> (var * var * variance)) r =
       match r with
@@ -170,32 +172,80 @@ module Renaming : RENAMING =
       | SingleRenaming (x , y , v) -> (match f (x , y , v) with
                                       | (x',y',v') -> SingleRenaming (x',y',v'))
       | CommaRenaming (r1 , r2) -> CommaRenaming (applyToSubs f r1, applyToSubs f r2)
-      | IdRenaming -> IdRenaming
+      | IdRenaming (psi) -> IdRenaming (psi)
       | CompositionRenaming (r1 , r2) ->
           CompositionRenaming (applyToSubs f r1 , applyToSubs f r2)
       | InverseRenaming r1 -> InverseRenaming (applyToSubs f r1)
       | FlipRenaming r1 -> FlipRenaming (applyToSubs f r1)
 
-    let emptyRenaming (_ : unit) = (Emp, EmptyRenaming, Emp)
+    let emptyRenaming (_ : unit) = Renaming (Emp, EmptyRenaming, Emp)
 
     let varRenaming (x , y , v , c) =
-      (Sin (x,v,c) , SingleRenaming (x,y,v), Sin (y,v,c))
+      Renaming (Sin (x,v,c) , SingleRenaming (x,y,v), Sin (y,v,c))
 
-    let commaRenaming (psi1 , r1 , psi1') (psi2 , r2 , psi2') =
-      (Com (psi1 , psi2) , CommaRenaming (r1 , r2) , Com (psi1' , psi2'))
+    let commaRenaming (Renaming (psi1 , r1 , psi1')) (Renaming (psi2 , r2 , psi2')) =
+      Renaming (Com (psi1 , psi2) , CommaRenaming (r1 , r2) , Com (psi1' , psi2'))
 
-    let idRenaming (psi : context) = (psi , IdRenaming , psi)
+    let idRenaming (psi : context) = Renaming (psi , IdRenaming (psi) , psi)
 
     let compositionRenaming r1 r2 =
       match (r1 , r2) with
-      | ((psi1 , rnm1 , psi2) , (psi2' , rnm2 , psi3)) when psi2 = psi2' ->
-        (psi1 , CompositionRenaming (rnm1 , rnm2) , psi3)
+      | (Renaming (psi1 , rnm1 , psi2) , Renaming (psi2' , rnm2 , psi3)) when psi2 = psi2' ->
+        Renaming (psi1 , CompositionRenaming (rnm1 , rnm2) , psi3)
       | _ -> failwith "Bad composition of renamings"
-    let inverseRenaming (psi1 , r , psi2) = (psi2, applyToSubs (fun (x , y , v) -> (y , x , v)) r, psi1)
+    let inverseRenaming (Renaming (psi1 , r , psi2)) = Renaming (psi2, applyToSubs (fun (x , y , v) -> (y , x , v)) r, psi1)
 
-    let flipRenaming (psi1 , r , psi2) =
-          (flipContext psi1, applyToSubs (fun (x , y , v) -> (x , y, flipVar v)) r,
+    let flipRenaming (Renaming (psi1 , r , psi2)) =
+          Renaming (flipContext psi1, applyToSubs (fun (x , y , v) -> (x , y, flipVar v)) r,
            flipContext psi2)
+
+    let commRenaming = function
+    | CommaRenaming (r1 , r2) -> EquivRen (CommaRenaming (r1 , r2) , CommaRenaming (r2 , r1))
+    | _ -> failwith "commutative renaming fail"
+
+    let assocRenaming = function
+    | CommaRenaming (CommaRenaming (r1,r2), r3) ->
+      EquivRen (CommaRenaming (CommaRenaming (r1,r2), r3) , CommaRenaming (r1 , CommaRenaming (r2,r3)))
+    | _ -> failwith "associtative renaming fail"
+
+    let unitLrenaming = function
+    | CommaRenaming (EmptyRenaming , r) -> EquivRen (CommaRenaming (EmptyRenaming , r) , r)
+    | _ -> failwith "unitL renaming fail"
+
+    let unitRrenaming = function
+    | CommaRenaming (r , EmptyRenaming) -> EquivRen (CommaRenaming (r , EmptyRenaming) , r)
+    | _ -> failwith "unitR renaming fail"
+
+    let idEquivRenaming = function
+    | IdRenaming (Emp) -> EquivRen (IdRenaming (Emp) , EmptyRenaming)
+    | IdRenaming (Sin (x , v , c)) -> EquivRen (IdRenaming (Sin (x , v , c)) , SingleRenaming (x , x , v))
+    | IdRenaming (Com (psi1 , psi2)) -> EquivRen (IdRenaming (Com (psi1 , psi2)) ,
+          CommaRenaming (IdRenaming psi1 , IdRenaming psi2))
+    | _ -> failwith "Id equiv renaming"
+
+    let inverseEquivRenaming = function
+    | InverseRenaming (EmptyRenaming) -> EquivRen (InverseRenaming (EmptyRenaming) , EmptyRenaming)
+    | InverseRenaming (SingleRenaming (x , y , v)) -> EquivRen (SingleRenaming (x , y , v) , SingleRenaming (y , x , v))
+    | InverseRenaming (CommaRenaming (r1 , r2)) ->
+      EquivRen (InverseRenaming (CommaRenaming (r1 , r2)) , CommaRenaming (InverseRenaming r1, InverseRenaming r2))
+    | _ -> failwith "inverse equiv renaming"
+
+    let flipEquivRenaming = function
+    | FlipRenaming (EmptyRenaming) -> EquivRen (FlipRenaming (EmptyRenaming) , EmptyRenaming)
+    | FlipRenaming (SingleRenaming (x , y , v)) ->
+        EquivRen (FlipRenaming (SingleRenaming (x , y , v)) , SingleRenaming (x , y , flipVar v))
+    | FlipRenaming (CommaRenaming (r1 , r2)) ->
+      EquivRen (FlipRenaming (CommaRenaming (r1 , r2)) , CommaRenaming (FlipRenaming r1 , FlipRenaming r2))
+    | FlipRenaming (FlipRenaming r) -> EquivRen (FlipRenaming (FlipRenaming r) , r)
+    | _ -> failwith "flip equiv renaming"
+
+    let composeEquivRenaming = function
+    | CompositionRenaming (IdRenaming psi , r) -> EquivRen (CompositionRenaming (IdRenaming psi , r), r)
+    | CompositionRenaming (r , IdRenaming psi) -> EquivRen (CompositionRenaming (r , IdRenaming psi), r)
+    | CompositionRenaming (CompositionRenaming (r1 , r2) , r3) ->
+      EquivRen (CompositionRenaming (CompositionRenaming (r1 , r2) , r3) , CompositionRenaming (r1 , CompositionRenaming (r2,r3)))
+  (*  | CompositionRenaming (InverseRenaming r , r') when r = r' -> EquivRen ( , ) *)
+    | _ -> failwith "composition equiv renaming"
   end;;
 
 type renaming = Renaming.renaming
