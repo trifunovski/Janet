@@ -85,6 +85,8 @@ module type CONTEXT_JUDGEMENT =
 sig
     type ctx
     type equiv
+    type delta
+    type phi
     val emptyJudge : context -> ctx
     val singleJudge : context -> ctx
     val commaJudge : ctx -> ctx -> ctx
@@ -93,11 +95,15 @@ sig
     val assoc : context -> equiv
     val unitL : context -> equiv
     val unitR : context -> equiv
+    val delta : context -> delta
+    val phi : context -> phi
 end;;
 module Ctx : CONTEXT_JUDGEMENT =
   struct
     type ctx = Context of context
     type equiv = Equiv of context * context
+    type delta = Delta of context
+    type phi = Phi of context
     let rec flipJudge ((Context (psi)) : ctx) = Context (flipContext psi)
 
     let emptyJudge = function
@@ -136,6 +142,11 @@ module Ctx : CONTEXT_JUDGEMENT =
       | Equiv (psi1 , psi2) when psi = psi1 -> Context psi2
       | Equiv (psi1 , psi2) when psi = psi2 -> Context psi1
       | _ -> failwith "WellFormednessEquiv"
+
+    let delta psi = Delta psi
+    (* !!! FIX THESE TWO !!! *)
+    let phi psi = Phi psi
+
   end;;
 
 type ctx = Ctx.ctx
@@ -143,15 +154,16 @@ type ctx = Ctx.ctx
 
 module type RENAMING =
 sig
-    type renaming
+    type rnm
+    type renaming_judgement
     type equivren
-    val emptyRenaming : unit -> renaming
-    val varRenaming : var * var * variance * cat -> renaming
-    val commaRenaming : renaming -> renaming -> renaming
-    val idRenaming : context -> renaming
-    val compositionRenaming : renaming -> renaming -> renaming
-    val inverseRenaming : renaming -> renaming
-    val flipRenaming : renaming -> renaming
+    val emptyRenaming : unit -> renaming_judgement
+    val varRenaming : var * var * variance * cat -> renaming_judgement
+    val commaRenaming : renaming_judgement -> renaming_judgement -> renaming_judgement
+    val idRenaming : context -> renaming_judgement
+    val compositionRenaming : renaming_judgement -> renaming_judgement -> renaming_judgement
+    val inverseRenaming : renaming_judgement -> renaming_judgement
+    val flipRenaming : renaming_judgement -> renaming_judgement
 end
 module Renaming : RENAMING =
   struct
@@ -163,7 +175,7 @@ module Renaming : RENAMING =
              | InverseRenaming of rnm
              | FlipRenaming of rnm
 
-    type renaming = Renaming of context * rnm * context
+    type renaming_judgement = Renaming of context * rnm * context
     type equivren = EquivRen of rnm * rnm
 
     let rec applyToSubs (f : (var * var * variance) -> (var * var * variance)) r =
@@ -240,6 +252,11 @@ module Renaming : RENAMING =
     | _ -> failwith "flip equiv renaming"
 
     let composeEquivRenaming = function
+    | CompositionRenaming (EmptyRenaming , r) -> EquivRen (CompositionRenaming (EmptyRenaming , r) , EmptyRenaming)
+    | CompositionRenaming (SingleRenaming (x , y , v) , SingleRenaming (z , x' , v')) when x = x' && v = v' ->
+      EquivRen (CompositionRenaming (SingleRenaming (x , y , v) , SingleRenaming (z , x , v)) ,
+                SingleRenaming (z , y , v))
+
     | CompositionRenaming (IdRenaming psi , r) -> EquivRen (CompositionRenaming (IdRenaming psi , r), r)
     | CompositionRenaming (r , IdRenaming psi) -> EquivRen (CompositionRenaming (r , IdRenaming psi), r)
     | CompositionRenaming (CompositionRenaming (r1 , r2) , r3) ->
@@ -248,6 +265,50 @@ module Renaming : RENAMING =
     | _ -> failwith "composition equiv renaming"
   end;;
 
-type renaming = Renaming.renaming
+module type UNIFICATION =
+sig
+    type unification
+end
+module Unification : UNIFICATION =
+  struct
+    open Ctx
+    open Renaming
+    type unification = Uni of context * context * context * context * rnm * context * rnm
 
-let flipRenaming : renaming -> renaming = Renaming.flipRenaming
+  end;;
+
+
+module type SUBSTITUTION =
+sig
+    type sub
+    type sub_judgement
+    val emptySub : unit -> sub_judgement
+    val varSub : sub_judgement -> unit
+    val commaSub : sub_judgement -> sub_judgement -> sub_judgement
+    val idSub : context -> sub_judgement
+    val compSub : sub_judgement -> sub_judgement -> sub_judgement
+    val flipSub : sub_judgement -> sub_judgement
+end
+module Substitution : SUBSTITUTION =
+  struct
+    type sub = EmptySub | VarSub of var * var * variance | CommaSub of sub * sub |
+      IdSub of context | CompSub of sub * sub | FlipSub of sub
+    type sub_judgement = Sub of context * sub * context
+
+    let emptySub (_ : unit) = Sub (Emp , EmptySub , Emp)
+
+    let varSub (s : sub_judgement) = ()
+
+    let commaSub (Sub (psi1 , sub1 , psi1') : sub_judgement) (Sub (psi2 , sub2 , psi2') : sub_judgement) =
+      Sub (Com (psi1 , psi2) , CommaSub (sub1 , sub2) , Com (psi1' , psi2'))
+
+    let idSub (psi : context) = Sub (psi , IdSub psi , psi)
+
+    let compSub s1 s2 =
+      match (s1 , s2) with
+      | (Sub (psi , s' , psi') , Sub(c , s , psi'')) when psi' = c -> Sub (psi , CompSub (s , s') , psi'')
+      | _ -> failwith "comp sub fail"
+
+    let flipSub (Sub (psi , s , psi')) = Sub (flipContext psi , FlipSub s , flipContext psi')
+
+  end;;
