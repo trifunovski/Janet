@@ -200,6 +200,19 @@ let composeEquivRenaming = function
 
 type unification = Uni of context * context * context * context * rnm * context * rnm
 
+let uniZero = function
+  | (delta1 , delta2) when isDelta delta1 && isDelta delta2
+    -> Uni (delta1 , Emp , delta2 , Emp , EmptyRenaming , Com (delta1 , delta2) , IdRenaming (Com (delta1 , delta2)))
+  | _ -> failwith "uniZero bad input"
+
+let uniOne = function
+  | (Uni (psi1 , psi1' , psi2 , psi2' , r , delta0 , r0) , (x , y , v , a)) when isDelta delta0
+    -> Uni (Com (psi1 , Sin (x , flipVar v , a)) , Com (psi1' , Sin (x , v , a)) ,
+       Com (psi2 , Sin (y , v , a) ) , Com (psi2' , Sin (y , flipVar v , a)) ,
+       CommaRenaming (r , SingleRenaming (y , x , v)) , Com (delta0 , Com (Sin (x , Pos , a) , Sin (x , Neg , a))) ,
+       CommaRenaming (r0 , CommaRenaming (SingleRenaming (x , x , flipVar v) , SingleRenaming (x , y , v))))
+  | _ -> failwith "uniOne bad input"
+
 (* SUBSTITUTIONS *)
 
 type sub = EmptySub | VarSub of var * var * variance | CommaSub of sub * sub |
