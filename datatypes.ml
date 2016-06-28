@@ -1,5 +1,7 @@
 type ('a , 'b) either = Inl of 'a | Inr of 'b
 
+let (>>) f g x = f(g x)
+
 type variance = Pos | Neg
 
 type var = string
@@ -52,6 +54,21 @@ let rec valid (psi1 : context) (psi2 : context) =
   | Sin (x , v , c) -> no_dups (x , v , c) psi2
   | Com (psi1a, psi1b) -> valid psi1a psi2 && valid psi1b psi2
 
+let rec validSingleCtx (psi : context) =
+  match psi with
+  | Emp -> true
+  | Sin t -> true
+  | Com (psi1 , psi2) -> validSingleCtx psi1 && validSingleCtx psi2 && valid psi1 psi2
+
+let rec deltaHelper (psi : context) (help : context) =
+  match psi with
+  | Emp -> true
+  | Sin (x , v , c) -> not (no_dups (x , flipVar v , c) help)
+  | Com (psi1 , psi2) -> deltaHelper psi1 help && deltaHelper psi2 help
+
+let isDelta (psi : context) : bool = deltaHelper psi psi
+let isPhi (psi : context) : bool = validSingleCtx psi && isDelta (Com (psi , flipContext psi))
+
 (*
 let rec belongs (x, v, c) = function
   | Sin (x , v', c') -> v = v' && c = c'
@@ -81,12 +98,10 @@ module Membership : MEMBERSHIP =
 
 *)
 
-module type CONTEXT_JUDGEMENT =
+module type CONTEXT_judgment =
 sig
     type ctx
     type equiv
-    type delta
-    type phi
     val emptyJudge : context -> ctx
     val singleJudge : context -> ctx
     val commaJudge : ctx -> ctx -> ctx
@@ -95,15 +110,11 @@ sig
     val assoc : context -> equiv
     val unitL : context -> equiv
     val unitR : context -> equiv
-    val delta : context -> delta
-    val phi : context -> phi
 end;;
-module Ctx : CONTEXT_JUDGEMENT =
+module Ctx : CONTEXT_judgment =
   struct
     type ctx = Context of context
     type equiv = Equiv of context * context
-    type delta = Delta of context
-    type phi = Phi of context
     let rec flipJudge ((Context (psi)) : ctx) = Context (flipContext psi)
 
     let emptyJudge = function
@@ -143,10 +154,6 @@ module Ctx : CONTEXT_JUDGEMENT =
       | Equiv (psi1 , psi2) when psi = psi2 -> Context psi1
       | _ -> failwith "WellFormednessEquiv"
 
-    let delta psi = Delta psi
-    (* !!! FIX THESE TWO !!! *)
-    let phi psi = Phi psi
-
   end;;
 
 type ctx = Ctx.ctx
@@ -155,15 +162,15 @@ type ctx = Ctx.ctx
 module type RENAMING =
 sig
     type rnm
-    type renaming_judgement
+    type renaming_judgment
     type equivren
-    val emptyRenaming : unit -> renaming_judgement
-    val varRenaming : var * var * variance * cat -> renaming_judgement
-    val commaRenaming : renaming_judgement -> renaming_judgement -> renaming_judgement
-    val idRenaming : context -> renaming_judgement
-    val compositionRenaming : renaming_judgement -> renaming_judgement -> renaming_judgement
-    val inverseRenaming : renaming_judgement -> renaming_judgement
-    val flipRenaming : renaming_judgement -> renaming_judgement
+    val emptyRenaming : unit -> renaming_judgment
+    val varRenaming : var * var * variance * cat -> renaming_judgment
+    val commaRenaming : renaming_judgment -> renaming_judgment -> renaming_judgment
+    val idRenaming : context -> renaming_judgment
+    val compositionRenaming : renaming_judgment -> renaming_judgment -> renaming_judgment
+    val inverseRenaming : renaming_judgment -> renaming_judgment
+    val flipRenaming : renaming_judgment -> renaming_judgment
 end
 module Renaming : RENAMING =
   struct
@@ -175,7 +182,7 @@ module Renaming : RENAMING =
              | InverseRenaming of rnm
              | FlipRenaming of rnm
 
-    type renaming_judgement = Renaming of context * rnm * context
+    type renaming_judgment = Renaming of context * rnm * context
     type equivren = EquivRen of rnm * rnm
 
     let rec applyToSubs (f : (var * var * variance) -> (var * var * variance)) r =
@@ -281,25 +288,25 @@ module Unification : UNIFICATION =
 module type SUBSTITUTION =
 sig
     type sub
-    type sub_judgement
-    val emptySub : unit -> sub_judgement
-    val varSub : sub_judgement -> unit
-    val commaSub : sub_judgement -> sub_judgement -> sub_judgement
-    val idSub : context -> sub_judgement
-    val compSub : sub_judgement -> sub_judgement -> sub_judgement
-    val flipSub : sub_judgement -> sub_judgement
+    type sub_judgment
+    val emptySub : unit -> sub_judgment
+    val varSub : sub_judgment -> unit
+    val commaSub : sub_judgment -> sub_judgment -> sub_judgment
+    val idSub : context -> sub_judgment
+    val compSub : sub_judgment -> sub_judgment -> sub_judgment
+    val flipSub : sub_judgment -> sub_judgment
 end
 module Substitution : SUBSTITUTION =
   struct
     type sub = EmptySub | VarSub of var * var * variance | CommaSub of sub * sub |
       IdSub of context | CompSub of sub * sub | FlipSub of sub
-    type sub_judgement = Sub of context * sub * context
+    type sub_judgment = Sub of context * sub * context
 
     let emptySub (_ : unit) = Sub (Emp , EmptySub , Emp)
 
-    let varSub (s : sub_judgement) = ()
+    let varSub (s : sub_judgment) = ()
 
-    let commaSub (Sub (psi1 , sub1 , psi1') : sub_judgement) (Sub (psi2 , sub2 , psi2') : sub_judgement) =
+    let commaSub (Sub (psi1 , sub1 , psi1') : sub_judgment) (Sub (psi2 , sub2 , psi2') : sub_judgment) =
       Sub (Com (psi1 , psi2) , CommaSub (sub1 , sub2) , Com (psi1' , psi2'))
 
     let idSub (psi : context) = Sub (psi , IdSub psi , psi)
@@ -311,4 +318,99 @@ module Substitution : SUBSTITUTION =
 
     let flipSub (Sub (psi , s , psi')) = Sub (flipContext psi , FlipSub s , flipContext psi')
 
+  end;;
+
+
+module type CALCULUS =
+sig
+  type hom
+  type tp
+  type tpctx
+  type judgment
+  type tc_judgment
+  val hom_intro : context -> judgment
+  val tensor_intro : judgment * judgment -> judgment
+  val coend_intro : judgment -> judgment
+  val end_intro : judgment -> judgment
+  val limply_intro : judgment * judgment -> judgment
+  val hom_intro2 : context -> tc_judgment
+  val tensor_intro2 : tc_judgment -> tc_judgment
+  val coend_intro2 : tc_judgment -> tc_judgment
+  val limply_intro2 : tc_judgment -> tc_judgment
+  val tensor_intro3 : judgment * judgment -> tc_judgment
+  val coend_intro3 : judgment -> tc_judgment
+  val end_intro3 : judgment -> tc_judgment
+  val limply_intro3 : judgment * judgment -> tc_judgment
+end
+module Calculus : CALCULUS =
+  struct
+    type hom = Hom of term * term | Tensor of hom * hom | Limply of hom * hom | End of term * hom | Coend of term * hom
+    type tp = Type of hom
+    type tpctx = Dot | Cons of tpctx * hom
+    type judgment = J of context * tp
+    type tc_judgment = TCJ of context * tpctx * hom
+
+    let hom_intro = function
+      | Com (Sin (x , v , c), Sin (y , v' , c')) when c = c' && v <> v'
+          -> J (Com (Sin (x , v , c), Sin (y , v' , c')) , Type (Hom ((x,v,c) , (y,v',c'))))
+      | _ -> failwith "hom_intro bad input"
+
+    let tensor_intro = function
+      | (J (psi1 , Type m1) , J (psi2 , Type m2)) -> J (Com (psi1 , psi2) , Type (Tensor (m1 , m2)))
+
+    let coend_intro = function
+      | J (Com (psi , Com (Sin (x , v , c) , Sin (x' , v' , c'))) , Type m)
+          when x = x' && v <> v' && c = c' -> J (psi , Type (Coend ((x , v , c) , m)))
+      | _ -> failwith "coend_intro bad input"
+
+    let end_intro = function
+      | J (Com (psi , Com (Sin (x , v , c) , Sin (x' , v' , c'))) , Type m)
+            when x = x' && v <> v' && c = c' -> J (psi , Type (End ((x , v , c) , m)))
+      | _ -> failwith "coend_intro bad input"
+
+    let limply_intro = function
+      | (J (psi1' , Type m1), J (psi2 , Type m2)) -> J (Com (flipContext psi1' , psi2) , Type (Limply (m1 , m2)))
+
+    let hom_intro2 = function
+      | (Com (Sin (z , v , c) , Sin (z' , v' , c'))) when z = z' && v <> v' && c = c'
+          -> TCJ (Com (Sin (z , v , c) , Sin (z' , v' , c')) , Dot , Hom ((z,v,c),(z',v',c')))
+      | _ -> failwith "hom_intro2 bad input"
+
+    let tensor_intro2 = function
+      | TCJ (delta , Cons (Cons (gamma , m1) , m2) , n) when isDelta delta -> TCJ (delta , Cons (gamma , Tensor (m1,m2)) , n)
+      | _ -> failwith "tensor_intro2 bad input"
+
+    let coend_intro2 = function
+      | TCJ (Com (delta , (Com (Sin (x,v,c) , Sin (x',v',c')))) , Cons (gamma , m) , n) when isDelta delta && x = x' && v <> v' && c = c'
+          -> TCJ (delta , Cons (gamma , Coend ((x,v,c),m)), n)
+      | _ -> failwith "coend_intro2 bad input"
+
+    let end_intro2 = function
+      | TCJ (Com (delta , (Com (Sin (x,v,c) , Sin (x',v',c')))) , gamma , m) when isDelta delta && x = x' && v <> v' && c = c'
+          -> TCJ (delta , gamma , End ((x , v , c) , m))
+      | _ -> failwith "end_intro2 bad input"
+
+    let limply_intro2 = function
+      | TCJ (delta , Cons (gamma , m) , n) when isDelta delta -> TCJ (delta , gamma , Limply (m , n))
+      | _ -> failwith "limply_intro2 bad input"
+
+    let tensor_intro3 = function
+      | (J (phi1 , Type m1) , J (phi2 , Type m2)) when isPhi phi1 && isPhi phi2 ->
+        TCJ (Com (Com (phi1 , flipContext phi1) , Com (phi2 , flipContext phi2) ), Cons (Cons (Dot ,m1) , m2) , Tensor (m1,m2))
+      | _ -> failwith "tensor_intro3 bad input"
+
+    let coend_intro3 = function
+      | J (Com (phi , Com (Sin (x , v , c), Sin (x',v',c'))) , Type m) when x = x' && v <> v' && c = c' && isPhi phi
+        -> TCJ (Com (Com (phi , flipContext phi) , Com (Sin (x , v , c), Sin (x',v',c'))) , Cons (Dot , m) , Coend ((x,v,c) , m))
+      | _ -> failwith "coend_intro3 bad input"
+
+    let end_intro3 = function
+      | J (Com (phi , Com (Sin (x , v , c), Sin (x',v',c'))) , Type m) when x = x' && v <> v' && c = c' && isPhi phi
+        -> TCJ (Com (Com (phi , flipContext phi) , Com (Sin (x , v , c), Sin (x',v',c'))) , Cons (Dot , End ((x , v, c) , m)) , m)
+      | _ -> failwith "end_intro3 bad input"
+
+    let limply_intro3 = function
+      | (J (phi1 , Type m1) , J (phi2 , Type m2)) when isPhi phi1 && isPhi phi2
+        -> TCJ (Com (Com (phi1 , flipContext phi1) , Com (phi2 , flipContext phi2)) , Cons (Cons (Dot , m1) , Limply (m1 , m2) ) , m2)
+      | _ -> failwith "limply_intro3 bad input"
   end;;
