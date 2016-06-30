@@ -255,3 +255,12 @@ let rec seq_type_checker cats sq =
   | (Com (psi1 , psi2) , Seq (gamma , m)) -> ctx_type_checker (flipContext psi1) gamma;
     tp_type_checker psi2 m
   | _ -> failwith "seq_type_checker failed"
+
+let rec two_ctx_type_checker delta tps tp =
+  match (delta , tps , tp) with
+  | (_ , Cons (gamma , Tensor (m1 , m2)) , n) when isDelta delta -> two_ctx_type_checker delta (Cons (Cons (gamma , m1) , m2)) n
+  | (_ , _ , Limpl (m , n)) when isDelta delta -> two_ctx_type_checker delta (Cons (tps , m)) n
+  | (_ , Cons (gamma , Coend ((x , a) , m)) , n) when isDelta delta ->
+    two_ctx_type_checker (Com (delta , bothVars x a)) (Cons (gamma , m)) n
+  | (_ , _ , End ((x , a) , m)) when isDelta delta -> two_ctx_type_checker (Com (delta , bothVars x a)) tps m
+  | _ -> failwith "two_ctx_type_checker failed"
