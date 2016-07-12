@@ -19,6 +19,26 @@ module TermVar : sig
   val toUserString : t -> string
 end
 
+module ABT : sig
+  type 'oper t
+
+  type 'oper view
+    = Var of TermVar.t
+    | Binding of TermVar.t * 'oper t
+    | Oper of 'oper
+
+  exception Malformed
+
+  type 'a binding_modifier = TermVar.t -> int -> 'a -> 'a
+
+  val bind : 'oper binding_modifier -> 'oper t binding_modifier
+  val unbind : 'oper binding_modifier -> 'oper t binding_modifier
+  val into : 'oper binding_modifier -> 'oper view -> 'oper t
+  val out : 'oper binding_modifier -> 'oper t -> 'oper view
+
+  val aequiv : ('oper * 'oper -> bool) -> 'oper t * 'oper t -> bool
+end
+
 module Typ : sig
   type t =
          | Prop of string
@@ -44,10 +64,10 @@ module Term : sig
             | App of t * t
             | TenPair of t * t
             | WithPair of t * t
-            | Let of t * termVar * t
+            | Let of t * t * t
             | Inl of (Typ.t * t)
             | Inr of (Typ.t * t)
-            | Case of termVar * (termVar * t) * (termVar * t)
+            | Case of t * (termVar * t) * (termVar * t)
             | Unit (* Top *)
             | Star (* One *)
 

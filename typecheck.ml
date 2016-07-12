@@ -41,7 +41,10 @@ let rec typecheck (ctx : context) (t : Term.t) : (Typ.t * context) option =
     (* 1 Right *)
     | Term.Star -> Some (Typ.One , ctx)
     (* Or Left *)
-    | Term.Case (z , (x , u) , (y , v)) -> (try (let a_plus_b = Hashtbl.find ctx z in
+    | Term.Case (zt , (x , u) , (y , v)) ->
+        (match Term.out zt with
+          | Term.Var z ->
+                                        (try (let a_plus_b = Hashtbl.find ctx z in
                                                 match a_plus_b with
                                                 | Typ.With (a , b) ->
                                                   ( let () = Hashtbl.remove ctx z in
@@ -60,15 +63,18 @@ let rec typecheck (ctx : context) (t : Term.t) : (Typ.t * context) option =
                                                 | _ -> None
                                                 ) with
                                            | _ -> None)
-    | Term.Let (tm , z , tm') ->
+          | _ -> None)
+    | Term.Let (tm , zt , tm') ->
+        (match Term.out zt with
+        | Term.Var z ->
                                 (* Cut *)
                                 (try (match typecheck ctx tm with
                                       | None -> failwith "not a cut"
                                       | Some (tp , rest) ->
-                                        let () = Hashtbl.add rest z tp in
-                                        (match typecheck rest tm' with
-                                        | None -> failwith "not a cut"
-                                        | Some c -> Some c)
+                                            let () = Hashtbl.add rest z tp in
+                                            (match typecheck rest tm' with
+                                            | None -> failwith "not a cut"
+                                            | Some c -> Some c)
                                         )
                                  with
                                  | _ ->
@@ -83,11 +89,11 @@ let rec typecheck (ctx : context) (t : Term.t) : (Typ.t * context) option =
                                                                      | Some (a' , rest) when Typ.aequiv a a' ->
                                                                        let () = Hashtbl.add rest z b in
                                                                          typecheck rest tm'
-                                                                     | _ -> None)
-                                                                 | _ -> None))
+                                                                     | _ -> failwith "not an app")
+                                                                 | _ -> failwith "not an app"))
                                                         with
-                                                       | _ -> None )
-                                       | _ -> None )
+                                                       | _ -> failwith "not an app" )
+                                       | _ -> failwith "not an app" )
                                      | _ -> failwith "not an app")
                                 with
                                 | _ ->
@@ -131,6 +137,7 @@ let rec typecheck (ctx : context) (t : Term.t) : (Typ.t * context) option =
                                       ) with
                                   | _ -> None)
                                   ))
+         | _ -> None)
     | _ -> None
 
 let typechecker ctx t =
