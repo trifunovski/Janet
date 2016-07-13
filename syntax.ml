@@ -8,9 +8,9 @@ struct
 
   let newT s = (s, (counter := !counter + 1; !counter))
 
-  let equal ((_, id1) , (_, id2)) = (id1 = id2)
+  let equal (_, id1) (_, id2) = (id1 = id2)
 
-  let compare ((_, id1), (_, id2)) = Pervasives.compare id1 id2
+  let compare (_, id1) (_, id2) = Pervasives.compare id1 id2
 
   let toString (s, id) = s ^ "@" ^ (string_of_int id)
 
@@ -37,7 +37,7 @@ struct
 
   let rec bind bind_oper x i t =
       match t with
-      | FV y -> if TermVar.equal (x, y) then BV i else FV y
+      | FV y -> if TermVar.equal x y then BV i else FV y
       | ABS (name, t) -> ABS (name, bind bind_oper x (i + 1) t)
       | BV n -> BV n
       | OPER f -> OPER (bind_oper x i f)
@@ -67,7 +67,7 @@ struct
   let rec aequiv oper_eq (t1, t2) =
       match (t1, t2) with
       | (BV i, BV j) -> i = j
-      | (FV x, FV y) -> TermVar.equal (x, y)
+      | (FV x, FV y) -> TermVar.equal x y
       | (ABS (_, t1'), ABS (_, t2')) -> aequiv oper_eq (t1', t2')
       | (OPER f1, OPER f2) -> oper_eq (f1, f2)
       | _ -> false
@@ -135,10 +135,33 @@ struct
             | Unit (* Top *)
             | Star (* One *)
 
+  let into (v : view) : t =
+    match v with
+    | Var x -> T'Var x
+    | Lam ((x , t) , tm) -> T'Lam ((x,t) , tm)
+    | App (t1 , t2) -> T'App (t1 , t2)
+    | TenPair (t1 , t2) -> T'TenPair (t1 , t2)
+    | WithPair (t1 , t2) -> T'WithPair (t1 , t2)
+    | Let (t1 , t2 , t3) -> T'Let (t1 , t2 , t3)
+    | Inl (b , t) -> T'Inl ( b , t)
+    | Inr (a , t) -> T'Inr ( a , t)
+    | Case (t , (x , t1) , (y , t2)) -> T'Case (t , (x , t1) , (y , t2))
+    | Unit -> T'Unit
+    | Star -> T'Star
 
-  let into (v : view) : t = failwith "unimplemented"
-  let out (tm : t) : view = failwith "unimplemented"
-  let aequiv (tm1 : t) (tm2 : t) : bool = failwith "unimplemented"
+  let out (tm : t) : view =
+    match tm with
+    | T'Var x -> Var x
+    | T'Lam ((x , t) , tm) -> Lam ((x,t) , tm)
+    | T'App (t1 , t2) -> App (t1 , t2)
+    | T'TenPair (t1 , t2) -> TenPair (t1 , t2)
+    | T'WithPair (t1 , t2) -> WithPair (t1 , t2)
+    | T'Let (t1 , t2 , t3) -> Let (t1 , t2 , t3)
+    | T'Inl (b , t) -> Inl ( b , t)
+    | T'Inr (a , t) -> Inr ( a , t)
+    | T'Case (t , (x , t1) , (y , t2)) -> Case (t , (x , t1) , (y , t2))
+    | T'Unit -> Unit
+    | T'Star -> Star
 
   let rec toString (tm : t) : string =
     match tm with
@@ -157,8 +180,8 @@ struct
 
   let rec subst (tm1 : t) (v : termVar) (tm2 : t) : t =
     match tm2 with
-    | T'Var x -> if TermVar.equal (x , v) then tm1 else tm2
-    | T'Lam ((x , a) , tm3) -> if TermVar.equal (x , v) then tm2 else T'Lam ((x , a) , subst tm3 v tm2)
+    | T'Var x -> if TermVar.equal x v then tm1 else tm2
+    | T'Lam ((x , a) , tm3) -> if TermVar.equal x v then tm2 else T'Lam ((x , a) , subst tm3 v tm2)
     | T'App (t1 , t2) -> T'App (subst tm1 v t1 , subst tm1 v t2)
     | T'TenPair (t1 , t2) -> T'TenPair (subst tm1 v t1 , subst tm1 v t2)
     | T'WithPair (t1 , t2) -> T'WithPair (subst tm1 v t1 , subst tm1 v t2)
@@ -167,4 +190,20 @@ struct
     | T'Inr (b , t') -> T'Inr (b , subst tm1 v t')
     | T'Case (t , (x , t1) , (y , t2)) -> T'Case (subst tm1 v t , (x , subst tm1 v t1) , (y , subst tm1 v t2))
     | _ -> tm2
+
+  let rec aequiv (tm1 : t) (tm2 : t) : bool =
+    match (tm1 , tm2) with
+      | (T'Var x , T'Var y) -> TermVar.equal x y
+      | (T'Lam ((x , t) , tm) , T'Lam ((y , t') , tm')) -> aequiv tm (subst (T'Var x) y tm')
+      | (T'App (t1 , t2) , T'App (t1' , t2')) -> aequiv t1 t1' && aequiv t2 t2'
+      | (T'TenPair (t1 , t2) , T'TenPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
+      | (T'WithPair (t1 , t2) , T'WithPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
+      | (T'Let (t1 , t2 , t3) , T'Let (t1' , t2' , t3')) -> aequiv t1 t1' && aequiv t2 t2' && aequiv t3 t3'
+      | (T'Inl (b , t) , T'Inl (b' , t')) -> Typ.aequiv b b' && aequiv t t'
+      | (T'Inr (a , t) , T'Inr (a' , t')) -> Typ.aequiv a a' && aequiv t t'
+      | (T'Case (t , (x , t1) , (y , t2)) , T'Case (t' , (x' , t1') , (y' , t2')) )
+          -> aequiv t (subst (T'Var x) x' (subst (T'Var y) y' t')) && aequiv t1 t1' && aequiv t2 t2'
+      | (T'Unit , T'Unit) -> true
+      | (T'Star , T'Star) -> true
+      | _ -> false
 end

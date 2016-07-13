@@ -4,10 +4,10 @@ module TermVar : sig
   val newT : string -> t
 
   (* Tests whether two temps are equal. *)
-  val equal  : (t * t) -> bool
+  val equal  : t -> t -> bool
 
   (* Compares two temps. This is used to allow temps as keys into a table. *)
-  val compare : (t * t) -> int
+  val compare : t -> t -> int
 
   (* Provides a string representation of the globally unique temp. *)
   val toString : t -> string
