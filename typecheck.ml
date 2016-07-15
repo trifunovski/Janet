@@ -29,7 +29,7 @@ let ctxEquiv ctx1 ctx2 =
   then try (TmHshtbl.iter (func ctx2) ctx1; true) with | _ -> false
   else false
 
-let fixTerm links tm =
+let rec fixTerm links tm =
   match tm with
   | Term.PVar x -> (match find links x with
                 | Some tmvar -> Term.into (Term.Var tmvar)
