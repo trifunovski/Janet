@@ -18,62 +18,6 @@ struct
 
 end
 
-module ABT =
-struct
-  type 'oper t
-    = FV of TermVar.t
-    | BV of int
-    | ABS of string * 'oper t
-    | OPER of 'oper
-
-  type 'oper view
-    = Var of TermVar.t
-    | Binding of TermVar.t * 'oper t
-    | Oper of 'oper
-
-  type 'a binding_modifier = TermVar.t -> int -> 'a -> 'a
-
-  exception Malformed
-
-  let rec bind bind_oper x i t =
-      match t with
-      | FV y -> if TermVar.equal x y then BV i else FV y
-      | ABS (name, t) -> ABS (name, bind bind_oper x (i + 1) t)
-      | BV n -> BV n
-      | OPER f -> OPER (bind_oper x i f)
-
-  let rec unbind unbind_oper x i t =
-      match t with
-      | BV j -> if i = j then FV x else BV j
-      | ABS (name, t) -> ABS (name, unbind unbind_oper x (i + 1) t)
-      | FV x -> FV x
-      | OPER f -> OPER (unbind_oper x i f)
-
-  let into bind_oper v =
-      match v with
-      | Var x -> FV x
-      | Binding (x, t) -> ABS (TermVar.toUserString x, bind bind_oper x 0 t)
-      | Oper f -> OPER f
-
-  let out unbind_oper t =
-      match t with
-      | BV _ -> failwith "Internal Abbot Error"
-      | FV x -> Var x
-      | OPER f -> Oper f
-      | ABS (name, t) ->
-        let var = TermVar.newT name
-        in Binding (var, unbind unbind_oper var 0 t)
-
-  let rec aequiv oper_eq (t1, t2) =
-      match (t1, t2) with
-      | (BV i, BV j) -> i = j
-      | (FV x, FV y) -> TermVar.equal x y
-      | (ABS (_, t1'), ABS (_, t2')) -> aequiv oper_eq (t1', t2')
-      | (OPER f1, OPER f2) -> oper_eq (f1, f2)
-      | _ -> false
-
-end
-
 module Typ =
 struct
   type t =
@@ -110,17 +54,6 @@ end
 module Term =
 struct
   type termVar = TermVar.t
-  type t  = | T'Var of termVar
-            | T'Lam of (termVar * Typ.t) * t
-            | T'App of t * t
-            | T'TenPair of t * t
-            | T'WithPair of t * t
-            | T'Let of t * t * t
-            | T'Inl of (Typ.t * t)
-            | T'Inr of (Typ.t * t)
-            | T'Case of t * (termVar * t) * (termVar * t)
-            | T'Unit (* Top *)
-            | T'Star (* One *)
 
   type view =
             | Var of termVar
@@ -128,82 +61,114 @@ struct
             | App of t * t
             | TenPair of t * t
             | WithPair of t * t
-            | Let of t * t * t
-            | Inl of (Typ.t * t)
-            | Inr of (Typ.t * t)
-            | Case of t * (termVar * t) * (termVar * t)
+            | Letten of t * termVar * t
+            | Letapp of t * termVar * t
+            | Letfst of t * termVar * t
+            | Letsnd of t * termVar * t
+            | Inl of t
+            | Inr of t
+            | Case of termVar * (termVar * t) * (termVar * t)
             | Unit (* Top *)
             | Star (* One *)
+  and t = view
 
-  let into (v : view) : t =
-    match v with
-    | Var x -> T'Var x
-    | Lam ((x , t) , tm) -> T'Lam ((x,t) , tm)
-    | App (t1 , t2) -> T'App (t1 , t2)
-    | TenPair (t1 , t2) -> T'TenPair (t1 , t2)
-    | WithPair (t1 , t2) -> T'WithPair (t1 , t2)
-    | Let (t1 , t2 , t3) -> T'Let (t1 , t2 , t3)
-    | Inl (b , t) -> T'Inl ( b , t)
-    | Inr (a , t) -> T'Inr ( a , t)
-    | Case (t , (x , t1) , (y , t2)) -> T'Case (t , (x , t1) , (y , t2))
-    | Unit -> T'Unit
-    | Star -> T'Star
+  type pr = | PVar of string
+            | PLam of (string * Typ.t) * pr
+            | PApp of pr * pr
+            | PTenPair of pr * pr
+            | PWithPair of pr * pr
+            | PLetten of pr * string * pr
+            | PLetapp of pr * string * pr
+            | PLetfst of pr * string * pr
+            | PLetsnd of pr * string * pr
+            | PInl of pr
+            | PInr of pr
+            | PCase of string * (string * pr) * (string * pr)
+            | PUnit (* Top *)
+            | PStar (* One *)
+
+
+  let into (v : view) : t = v
+
+  let swapVar newV oldV curV =
+    if TermVar.equal oldV curV then newV else oldV
+
+  let rec swapInTerm newV oldV t =
+  let st = swapInTerm newV oldV in
+  let sv = swapVar newV oldV in
+    match t with
+    | Var z -> Var (sv z)
+    | App (t1 , t2) -> App (st t1, st t2)
+    | Lam ((x , tp) , tm) -> Lam (((sv x) , tp) , st tm)
+    | TenPair (t1 , t2) -> TenPair (st t1 , st t2)
+    | WithPair (t1 , t2) -> WithPair (st t1 , st t2)
+    | Letten (t1 , v , t2) -> Letten (st t1 , sv v , st t2)
+    | Letapp (t1 , v , t2) -> Letapp (st t1 , sv v , st t2)
+    | Letfst (t1 , v , t2) -> Letfst (st t1 , sv v , st t2)
+    | Letsnd (t1 , v , t2) -> Letsnd (st t1 , sv v , st t2)
+    | Inl tm -> Inl (swapInTerm newV oldV tm)
+    | Inr tm -> Inr (swapInTerm newV oldV tm)
+    | Case (z , (x , t1) , (y , t2)) -> Case (sv z , (sv x , st t1) , (sv y , st t2))
+    | _ -> t
 
   let out (tm : t) : view =
     match tm with
-    | T'Var x -> Var x
-    | T'Lam ((x , t) , tm) -> Lam ((x,t) , tm)
-    | T'App (t1 , t2) -> App (t1 , t2)
-    | T'TenPair (t1 , t2) -> TenPair (t1 , t2)
-    | T'WithPair (t1 , t2) -> WithPair (t1 , t2)
-    | T'Let (t1 , t2 , t3) -> Let (t1 , t2 , t3)
-    | T'Inl (b , t) -> Inl ( b , t)
-    | T'Inr (a , t) -> Inr ( a , t)
-    | T'Case (t , (x , t1) , (y , t2)) -> Case (t , (x , t1) , (y , t2))
-    | T'Unit -> Unit
-    | T'Star -> Star
+    | Lam ((x , tp) , tm) ->
+        let newx = TermVar.newT (TermVar.toString x) in
+          Lam ((newx,tp) , swapInTerm newx x tm)
+    | Letten (t1 , v , t2) ->
+        let newv = TermVar.newT (TermVar.toString v) in
+          Letten (t1 , newv , swapInTerm newv v t2)
+    | Letapp (t1 , v , t2) ->
+        let newv = TermVar.newT (TermVar.toString v) in
+          Letapp (t1 , newv , swapInTerm newv v t2)
+    | Letfst (t1 , v , t2) ->
+        let newv = TermVar.newT (TermVar.toString v) in
+          Letfst (t1 , newv , swapInTerm newv v t2)
+    | Letsnd (t1 , v , t2) ->
+        let newv = TermVar.newT (TermVar.toString v) in
+          Letsnd (t1 , newv , swapInTerm newv v t2)
+    | Case (z , (x , t1) , (y , t2)) ->
+        let newz = TermVar.newT (TermVar.toString z) in
+        let newx = TermVar.newT (TermVar.toString x) in
+        let newy = TermVar.newT (TermVar.toString y) in
+          Case (newz , (newx , swapInTerm newx x t1) , (newy , swapInTerm newy y t2))
+    | _ -> tm
 
   let rec toString (tm : t) : string =
     match tm with
-      | T'Var x -> TermVar.toUserString x
-      | T'Lam ((x , t) , tm) -> "\\" ^ TermVar.toUserString x ^":"^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
-      | T'App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
-      | T'TenPair (t1 , t2) -> toString t1 ^ " X " ^ toString t2
-      | T'WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
-      | T'Let (t1 , t3 , t2) -> "let " ^ toString t1 ^ " be " ^ toString t3 ^ " in " ^ toString t2
-      | T'Inl (_ , t') -> "inl(" ^ toString t' ^ ")"
-      | T'Inr (_ , t') -> "inr(" ^ toString t' ^ ")"
-      | T'Case (z , (x , u) , (y , v)) -> "case " ^ toString z ^ " of inl(" ^ TermVar.toUserString x ^")" ^
-          " => " ^ toString u ^ " , " ^ "inr(" ^ TermVar.toUserString y ^ ") => " ^ toString v
-      | T'Unit -> "T"
-      | T'Star -> "1"
-
-  let rec subst (tm1 : t) (v : termVar) (tm2 : t) : t =
-    match tm2 with
-    | T'Var x -> if TermVar.equal x v then tm1 else tm2
-    | T'Lam ((x , a) , tm3) -> if TermVar.equal x v then tm2 else T'Lam ((x , a) , subst tm3 v tm2)
-    | T'App (t1 , t2) -> T'App (subst tm1 v t1 , subst tm1 v t2)
-    | T'TenPair (t1 , t2) -> T'TenPair (subst tm1 v t1 , subst tm1 v t2)
-    | T'WithPair (t1 , t2) -> T'WithPair (subst tm1 v t1 , subst tm1 v t2)
-    | T'Let (t1 , t3 , t2) -> T'Let (subst tm1 v t1 , subst tm1 v t3 , subst tm1 v t2)
-    | T'Inl (a , t') -> T'Inl (a , subst tm1 v t')
-    | T'Inr (b , t') -> T'Inr (b , subst tm1 v t')
-    | T'Case (t , (x , t1) , (y , t2)) -> T'Case (subst tm1 v t , (x , subst tm1 v t1) , (y , subst tm1 v t2))
-    | _ -> tm2
+      | Var x -> TermVar.toUserString x
+      | Lam ((x , t) , tm) -> "\\" ^ TermVar.toString x ^":"^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
+      | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
+      | TenPair (t1 , t2) -> toString t1 ^ " X " ^ toString t2
+      | WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
+      | Letten (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
+      | Letapp (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
+      | Letfst (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
+      | Letsnd (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
+      | Inl t' -> "inl(" ^ toString t' ^ ")"
+      | Inr t' -> "inr(" ^ toString t' ^ ")"
+      | Case (z , (x , u) , (y , v)) -> "case " ^ TermVar.toString z ^ " of inl(" ^ TermVar.toString x ^")" ^
+          " => " ^ toString u ^ " , " ^ "inr(" ^ TermVar.toString y ^ ") => " ^ toString v
+      | Unit -> "T"
+      | Star -> "1"
 
   let rec aequiv (tm1 : t) (tm2 : t) : bool =
     match (tm1 , tm2) with
-      | (T'Var x , T'Var y) -> TermVar.equal x y
-      | (T'Lam ((x , t) , tm) , T'Lam ((y , t') , tm')) -> aequiv tm (subst (T'Var x) y tm')
-      | (T'App (t1 , t2) , T'App (t1' , t2')) -> aequiv t1 t1' && aequiv t2 t2'
-      | (T'TenPair (t1 , t2) , T'TenPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
-      | (T'WithPair (t1 , t2) , T'WithPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
-      | (T'Let (t1 , t2 , t3) , T'Let (t1' , t2' , t3')) -> aequiv t1 t1' && aequiv t2 t2' && aequiv t3 t3'
-      | (T'Inl (b , t) , T'Inl (b' , t')) -> Typ.aequiv b b' && aequiv t t'
-      | (T'Inr (a , t) , T'Inr (a' , t')) -> Typ.aequiv a a' && aequiv t t'
-      | (T'Case (t , (x , t1) , (y , t2)) , T'Case (t' , (x' , t1') , (y' , t2')) )
-          -> aequiv t (subst (T'Var x) x' (subst (T'Var y) y' t')) && aequiv t1 t1' && aequiv t2 t2'
-      | (T'Unit , T'Unit) -> true
-      | (T'Star , T'Star) -> true
+      | (Unit , Unit) -> true
+      | (Star , Star) -> true
+      | (Var x , Var y) -> TermVar.equal x y
+      | (Inl t , Inl t') -> aequiv t t'
+      | (Inr t , Inr t') -> aequiv t t'
+      | (App (t1 , t2) , App (t1' , t2')) -> aequiv t1 t1' && aequiv t2 t2'
+      | (TenPair (t1 , t2) , TenPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
+      | (WithPair (t1 , t2) , WithPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
+      | (Lam ((x , t) , tm) , Lam ((y , t') , tm')) -> aequiv tm (swapInTerm x y tm')
+      | (Letten (t1 , v , t3) , Letten (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letapp (t1 , v , t3) , Letapp (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letfst (t1 , v , t3) , Letfst (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letsnd (t1 , v , t3) , Letsnd (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Case (z , (x , t1) , (y , t2)) , Case (z' , (x' , t1') , (y' , t2')) )
+          -> aequiv t1 (swapInTerm x x' t1') && aequiv t2 (swapInTerm y y' t2')
       | _ -> false
 end

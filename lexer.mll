@@ -9,7 +9,10 @@ let prop = ['A'-'Z']['A'-'Z']*
 let ws = ['\t' ' ']
 
 rule exp_token = parse
-  | "let" { LET }
+  | "letten" { LETTEN }
+  | "letapp" { LETAPP }
+  | "letfst" { LETFST }
+  | "letsnd" { LETSND }
   | "case" { CASE }
   | "T" { TOP }
   | "1" { UNIT }

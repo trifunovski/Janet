@@ -5,167 +5,253 @@ module TmHshtbl = Hashtbl.Make(Syntax.TermVar)
 
 type context = Typ.t TmHshtbl.t
 
-let rec typecheck (ctx : context) (t : Term.t) : (Typ.t * context) option =
-  match Term.out t with
-    (* IDENTITY RULE *)
-    | Term.Var x -> (try
-                      (let tp = TmHshtbl.find ctx x in
-                       let () = print_endline (Typ.toString tp) in
-                       let () = TmHshtbl.remove ctx x in
-                          Some (tp , ctx)) with
-                    | _ -> None)
-    (* Lollipop Right *)
-    | Term.Lam ((x , tp) , t') -> let () = TmHshtbl.add ctx x tp in
-                                  let stp = typecheck ctx t' in
-                                    (match stp with
-                                      | None -> None
-                                      | Some (tp' , rest_ctx) -> Some (Typ.Lolli (tp , tp') , rest_ctx))
-    (* Tensor Right *)
-    | Term.TenPair (t1 , t2) -> let stp = typecheck ctx t1 in
-                                (match stp with
-                                    | None -> None
-                                    | Some (tp1 , rest_ctx) ->
-                                    (match typecheck rest_ctx t2 with
-                                        | None -> None
-                                        | Some (tp2 , rest_ctx2) -> Some (Typ.Tensor (tp1,tp2) , rest_ctx2)))
-    (* With Right *)
-    | Term.WithPair (t1 , t2) -> (match (typecheck ctx t1 , typecheck ctx t2) with
-                                  | (Some (tp1 , rest1) , Some (tp2 , rest2)) -> Some (Typ.With (tp1 , tp2) , rest2)
-                                  | _ -> None)
-    (* Or Right 1 *)
-    | Term.Inl (tp , t') -> (match typecheck ctx t' with
-                          | Some (tp' , rest) -> Some (Typ.Or (tp' , tp), rest)
-                          | None -> None)
-    (* Or Right 2 *)
-    | Term.Inr (tp , t') -> (match typecheck ctx t' with
-                          | Some (tp' , rest) -> Some (Typ.Or (tp , tp'), rest)
-                          | None -> None)
-    (* Top right *)
-    | Term.Unit -> Some (Typ.Top , ctx)
-    (* 1 Right *)
-    | Term.Star -> Some (Typ.One , ctx)
-    (* Or Left *)
-    | Term.Case (zt , (x , u) , (y , v)) ->
-        (match Term.out zt with
-          | Term.Var z ->
-                                        (try (let a_plus_b = TmHshtbl.find ctx z in
-                                                match a_plus_b with
-                                                | Typ.With (a , b) ->
-                                                  ( let () = TmHshtbl.remove ctx z in
-                                                    let () = TmHshtbl.add ctx x a in
-                                                    match typecheck ctx u with
-                                                    | None -> None
-                                                    | Some (c , rest_ctx) ->
-                                                    let () = TmHshtbl.remove ctx x in
-                                                    let () = TmHshtbl.add ctx y b in
-                                                    match typecheck ctx v with
-                                                    | None -> None
-                                                    | Some (c', rest_ctx2) ->
-                                                    if Typ.aequiv c c' then Some (c' , rest_ctx2)
-                                                    else None
-                                                    )
-                                                | _ -> None
-                                                ) with
-                                           | _ -> None)
+let lookup ctx v = try
+  (Some (TmHshtbl.find ctx v))
+  with | _ -> None
+
+let add ctx v tp = TmHshtbl.add ctx v tp
+
+let remove ctx v = TmHshtbl.remove ctx v
+
+let find links s = try
+  (Some (Hashtbl.find links s))
+  with | _ -> None
+
+let addHT links s tmvar = Hashtbl.add links s tmvar
+
+let func ctx2 tm tp =
+  match lookup ctx2 tm with
+    | Some tp' when Typ.aequiv tp tp' -> ()
+    | _ -> failwith "ctxs are not equivalent"
+
+let ctxEquiv ctx1 ctx2 =
+  if TmHshtbl.length ctx1 = TmHshtbl.length ctx2
+  then try (TmHshtbl.iter (func ctx2) ctx1; true) with | _ -> false
+  else false
+
+let fixTerm links tm =
+  match tm with
+  | Term.PVar x -> (match find links x with
+                | Some tmvar -> Term.into (Term.Var tmvar)
+                | None ->
+                  let tmvar = TermVar.newT x in
+                    Term.into (Term.Var tmvar))
+  | Term.PLam ((x , tp) , pr) ->
+      (match find links x with
+        | Some tmvar -> Term.into (Term.Lam ((tmvar, tp) , fixTerm links pr))
+        | None ->
+          let tmvar = TermVar.newT x in
+          let () = addHT links x tmvar in
+            Term.into (Term.Lam ((tmvar, tp) , fixTerm links pr)))
+  | Term.PLetten (pr1 , x , pr2) ->
+    (match find links x with
+      | Some tmvar -> Term.into (Term.Letten (fixTerm links pr1 , tmvar , fixTerm links pr2))
+      | None ->
+        let tm1 = fixTerm links pr1 in
+        let tmvar = TermVar.newT x in
+        let () = addHT links x tmvar in
+          Term.into (Term.Letten (tm1 , tmvar , fixTerm links pr2))
+    )
+  | Term.PLetapp (pr1 , x , pr2) ->
+    (match find links x with
+      | Some tmvar -> Term.into (Term.Letapp (fixTerm links pr1 , tmvar , fixTerm links pr2))
+      | None ->
+        let tm1 = fixTerm links pr1 in
+        let tmvar = TermVar.newT x in
+        let () = addHT links x tmvar in
+          Term.into (Term.Letapp (tm1 , tmvar , fixTerm links pr2))
+    )
+  | Term.PLetfst (pr1 , x , pr2) ->
+    (match find links x with
+      | Some tmvar -> Term.into (Term.Letfst (fixTerm links pr1 , tmvar , fixTerm links pr2))
+      | None ->
+        let tm1 = fixTerm links pr1 in
+        let tmvar = TermVar.newT x in
+        let () = addHT links x tmvar in
+          Term.into (Term.Letfst (tm1 , tmvar , fixTerm links pr2))
+    )
+  | Term.PLetsnd (pr1 , x , pr2) ->
+    (match find links x with
+      | Some tmvar -> Term.into (Term.Letsnd (fixTerm links pr1 , tmvar , fixTerm links pr2))
+      | None ->
+        let tm1 = fixTerm links pr1 in
+        let tmvar = TermVar.newT x in
+        let () = addHT links x tmvar in
+          Term.into (Term.Letsnd (tm1 , tmvar , fixTerm links pr2))
+    )
+  | Term.PCase (z , (x , u) , (y , t)) ->
+    (match find links z with
+      | Some tmvarZ ->
+        (match find links x with
+          | Some tmvarX ->
+              let tm1 = fixTerm links u in
+              (match find links y with
+                | Some tmvarY -> Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t)))
+                | None ->
+                  let tmvarY = TermVar.newT y in
+                  let () = addHT links y tmvarY in
+                    Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t) ))
+                )
+          | None ->
+              let tmvarX = TermVar.newT x in
+              let () = addHT links x tmvarX in
+              let tm1 = fixTerm links u in
+              let () = Hashtbl.remove links x in
+              (match find links y with
+                | Some tmvarY -> Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t)))
+                | None ->
+                  let tmvarY = TermVar.newT y in
+                  let () = addHT links y tmvarY in
+                    Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t) ))
+                )
+        )
+      | None ->
+        let tmvarZ = TermVar.newT z in
+        let () = addHT links z tmvarZ in
+        (match find links x with
+          | Some tmvarX ->
+              let tm1 = fixTerm links u in
+              (match find links y with
+                | Some tmvarY -> Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t)))
+                | None ->
+                  let tmvarY = TermVar.newT y in
+                  let () = addHT links y tmvarY in
+                    Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t) ))
+                )
+          | None ->
+              let tmvarX = TermVar.newT x in
+              let () = addHT links x tmvarX in
+              let tm1 = fixTerm links u in
+              let () = Hashtbl.remove links x in
+              (match find links y with
+                | Some tmvarY -> Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t)))
+                | None ->
+                  let tmvarY = TermVar.newT y in
+                  let () = addHT links y tmvarY in
+                    Term.into (Term.Case (tmvarZ , (tmvarX , tm1) , (tmvarY , fixTerm links t) ))
+                )
+        )
+    )
+  | Term.PApp (pr1 , pr2) -> Term.into (Term.App (fixTerm links pr1 , fixTerm links pr2))
+  | Term.PTenPair (pr1 , pr2) -> Term.into (Term.TenPair (fixTerm links pr1 , fixTerm links pr2))
+  | Term.PWithPair (pr1 , pr2) -> Term.into (Term.WithPair (fixTerm links pr1 , fixTerm links pr2))
+  | Term.PInl (pr) -> Term.into (Term.Inl (fixTerm links pr))
+  | Term.PInr (pr) -> Term.into (Term.Inr (fixTerm links pr))
+  | Term.PUnit -> Term.into (Term.Unit)
+  | Term.PStar -> Term.into (Term.Star)
+
+let rec typecheck ctx tm tp =
+  match (Term.out tm , tp) with
+  (* Right Rules *)
+  | (Term.Var x , tp) ->
+      (match lookup ctx x with
+        | Some tp' when Typ.aequiv tp tp' ->
+            let () = remove ctx x in
+              Some ctx
+        | _ -> None)
+  | (Term.Lam ((x , tp1) , tm1) , Typ.Lolli (a , b)) when Typ.aequiv tp1 a ->
+    let () = add ctx x a in
+      typecheck ctx tm1 b
+  | (Term.TenPair (t , u) , Typ.Tensor (a , b)) ->
+    (match typecheck ctx t a with
+    | Some rest -> typecheck rest u b
+    | None -> None)
+  | (Term.Inl t , Typ.Or (a , b)) -> typecheck ctx t a
+  | (Term.Inr t , Typ.Or (a , b)) -> typecheck ctx t b
+  | (Term.WithPair (t , u) , Typ.With (a , b)) ->
+    (match (typecheck ctx t a , typecheck ctx u b) with
+    | (Some rest1 , Some rest2) when ctxEquiv rest1 rest2 -> Some rest1
+    | _ -> None)
+  | (Term.Star , Typ.One) -> Some ctx
+  (* Left Rules *)
+  | (Term.Letten (t1 , v , t2) , tp) ->
+    (match (Term.out t1 , lookup ctx v) with
+      | (Term.TenPair (xt , yt) , Some (Typ.Tensor (a , b))) ->
+        (match (Term.out xt , Term.out yt) with
+          | (Term.Var x , Term.Var y) ->
+            let () = remove ctx v in
+            let () = add ctx x a in
+            let () = add ctx y b in
+              typecheck ctx t2 tp
           | _ -> None)
-    | Term.Let (tm , zt , tm') ->
-        (match Term.out zt with
-        | Term.Var z ->
-                                (* Cut *)
-                                (try (match typecheck ctx tm with
-                                      | None -> failwith "not a cut"
-                                      | Some (tp , rest) ->
-                                            let () = TmHshtbl.add rest z tp in
-                                            (match typecheck rest tm' with
-                                            | None -> failwith "not a cut"
-                                            | Some c -> Some c)
-                                        )
-                                 with
-                                 | _ ->
-                                (* Lolli Left *)
-                                (try (match Term.out tm with
-                                     | Term.App (ft , t) -> (match Term.out ft with
-                                       | Term.Var f -> (try ( let tp = TmHshtbl.find ctx f in
-                                                               (match tp with
-                                                                 | Typ.Lolli (a , b) ->
-                                                                   let () = TmHshtbl.remove ctx f in
-                                                                   (match typecheck ctx t with
-                                                                     | Some (a' , rest) when Typ.aequiv a a' ->
-                                                                       let () = TmHshtbl.add rest z b in
-                                                                         typecheck rest tm'
-                                                                     | _ -> failwith "not an app")
-                                                                 | _ -> failwith "not an app"))
-                                                        with
-                                                       | _ -> failwith "not an app" )
-                                       | _ -> failwith "not an app" )
-                                     | _ -> failwith "not an app")
-                                with
-                                | _ ->
-                                (try (let tp = TmHshtbl.find ctx z in
-                                      match (Term.out tm , tp) with
-                                      (* 1 Left*)
-                                      | (Term.Unit , Typ.One) ->
-                                        let () = TmHshtbl.remove ctx z in
-                                          typecheck ctx tm'
-                                      (* Tensor Left *)
-                                      | (Term.TenPair (xt , yt) , Typ.Tensor(a , b)) ->
-                                        (match (Term.out xt,Term.out yt) with
-                                          | (Term.Var x , Term.Var y) ->
-                                            let () = TmHshtbl.remove ctx z in
-                                            let () = TmHshtbl.add ctx x a in
-                                            let () = TmHshtbl.add ctx y b in
-                                              typecheck ctx tm'
-                                          | _ -> None)
-                                      (* With Left 1*)
-                                      | (Term.WithPair (xt , yt) , Typ.With (a , b)) ->
-                                        (match (Term.out xt , Term.out yt) with
-                                          | (Term.Var x , ytp) ->
-                                            let () = TmHshtbl.remove ctx z in
-                                            let () = TmHshtbl.add ctx x a in
-                                              (match typecheck ctx tm' with
-                                                | Some res -> Some res
-                                                | None ->
-                                                (match ytp with
-                                                  | Term.Var y ->
-                                                    let () = TmHshtbl.remove ctx x in
-                                                    let () = TmHshtbl.add ctx y b in
-                                                      typecheck ctx tm'
-                                                  | _ -> None))
-                                          (* With Left 2*)
-                                          | (_ , Term.Var y) ->
-                                            let () = TmHshtbl.remove ctx z in
-                                            let () = TmHshtbl.add ctx y b in
-                                              typecheck ctx tm'
-                                          | _ -> None)
-                                      | _ -> None
-                                      ) with
-                                  | _ -> None)
-                                  ))
-         | _ -> None)
-    | _ -> None
+      | _ -> None)
+  | (Term.Letfst (t1 , v , t2) , tp) ->
+    (match (Term.out t1 , lookup ctx v) with
+      | (Term.WithPair (xt , _) , Some (Typ.With (a , b))) ->
+        (match (Term.out xt) with
+          | (Term.Var x) ->
+            let () = remove ctx v in
+            let () = add ctx x a in
+              typecheck ctx t2 tp
+          | _ -> None)
+      | _ -> None)
+  | (Term.Letsnd (t1 , v , t2) , tp) ->
+    (match (Term.out t1 , lookup ctx v) with
+      | (Term.WithPair (_ , yt) , Some (Typ.With (a , b))) ->
+        (match (Term.out yt) with
+          | (Term.Var y) ->
+            let () = remove ctx v in
+            let () = add ctx y b in
+              typecheck ctx t2 tp
+          | _ -> None)
+      | _ -> None)
+  | (Term.Case (z , (x , u) , (y , t)) , tp) ->
+    (match lookup ctx z with
+      | Some (Typ.Or (a , b)) ->
+        let () = remove ctx z in
+        let () = add ctx x a in
+        let res1 = typecheck ctx u tp in
+        let () = remove ctx x in
+        let () = add ctx y b in
+        (match (res1 , typecheck ctx t tp) with
+          | (Some rest1 , Some rest2) when ctxEquiv rest1 rest2 -> Some rest1
+          | _ -> None)
+      | _ -> None)
+  | (Term.Letapp (ft , x , u) , tp) ->
+    (match Term.out ft with
+      | Term.App (ftm , t) ->
+        (match Term.out ftm with
+          | Term.Var f ->
+            (match lookup ctx f with
+              | Some (Typ.Lolli (a , b)) ->
+                let () = remove ctx f in
+                (match typecheck ctx t a with
+                  | Some rest ->
+                    let () = add rest x b in
+                      typecheck rest u tp
+                  | _ -> None)
+              | _ -> None)
+          | _ -> None)
+      | _ -> None)
+  | _ -> None
 
-let typechecker ctx t =
-  match typecheck ctx t with
-    | Some (tp , rest_ctx) -> if TmHshtbl.length rest_ctx = 0 then tp else failwith "cannot typecheck"
-    | _ -> failwith "cannot typecheck"
+let typechecker ctx tm tp =
+  match typecheck ctx tm tp with
+    | Some rest_ctx -> if TmHshtbl.length rest_ctx = 0 then true else false
+    | _ -> false
 
-
-let rec get_context ctx =
+let rec get_context ctx links =
   let () = print_endline "Enter a term from the context or enter END if you are done: " in
   let str = input_line stdin in
-  if str = "END" then ctx else
+  if str = "END" then (ctx , links) else
     let lexbuf = Lexing.from_string str in
-    let (x , a) = Parser.ctxtmEXP Lexer.exp_token lexbuf in
+    let (s , x , a) = Parser.ctxtmEXP Lexer.exp_token lexbuf in
     let () = TmHshtbl.add ctx x a in
-    get_context ctx
+    let () = Hashtbl.add links s x in
+    get_context ctx links
 
 let main (_ : unit) =
+  let () = print_endline "Time to enter the context." in
+  let (ctx , links) = get_context (TmHshtbl.create 256) (Hashtbl.create 256) in
+  let () = print_endline "Enter the intended type of the term:" in
+  let strtp = input_line stdin in
+  let tpbuf = Lexing.from_string strtp in
+  let tp = Parser.typEXP Lexer.exp_token tpbuf in
+  let () = print_endline ("The selected type is " ^ (Typ.toString tp)) in
   let () = print_endline "Enter the term you want typechecked: " in
   let str = input_line stdin in
   let lexbuf = Lexing.from_string str in
-  let tm = Parser.termEXP Lexer.exp_token lexbuf in
-  let () = print_endline (Term.toString tm) in
-  let () = print_endline "Time to enter the context." in
-  let ctx = get_context (TmHshtbl.create 16) in
-  let tp = typechecker ctx tm in
-    print_string (Typ.toString tp)
+  let ptm = Parser.termEXP Lexer.exp_token lexbuf in
+  let tm = fixTerm links ptm in
+  let () = print_endline ("The selected term is " ^ (Term.toString tm)) in
+  if typechecker ctx tm tp then print_endline "The term typechecks." else print_endline "The term doesn't typecheck."

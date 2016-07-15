@@ -3,13 +3,13 @@
 %}
 
 %token <string> VAR PROP
-%token DOT LAMBDA LOLLI TENPAIR WITHPAIR UNIT STAR TOP ONE LPAREN RPAREN COMMA COLON EOF EOL LET BE IN TENSOR OR WITH INL INR LESS GREATER CASE OF ARROW
+%token DOT LAMBDA LOLLI TENPAIR WITHPAIR UNIT STAR TOP ONE LPAREN RPAREN COMMA COLON EOF EOL LETTEN LETAPP LETFST LETSND BE IN TENSOR OR WITH INL INR LESS GREATER CASE OF ARROW
 
 %start typEXP termEXP ctxtmEXP
-%type <Typ.t> typEXP
-%type <Term.t> termEXP
-%type <TermVar.t> var
-%type <TermVar.t * Typ.t> ctxtmEXP
+%type <Syntax.Typ.t> typEXP
+%type <Syntax.Term.pr> termEXP
+%type <string> var
+%type <string * Syntax.TermVar.t * Syntax.Typ.t> ctxtmEXP
 
 %%
 
@@ -27,10 +27,11 @@ typEXP: typ EOL { $1 }
 ;
 
 
-var: VAR { (TermVar.newT $1) }
+var: VAR { $1 }
 ;
 
-ctxtm: var COLON typ { ($1 , $3) }
+
+ctxtm: var COLON typ { ($1 , (TermVar.newT $1) , $3) }
 ;
 
 ctxtmEXP: ctxtm EOL { $1 }
@@ -38,19 +39,21 @@ ctxtmEXP: ctxtm EOL { $1 }
 ;
 
 term:
-    | var {  Term.into (Term.Var $1) }
-    | LPAREN term TENSOR term RPAREN { Term.into (Term.TenPair ($2 , $4)) }
-    | LESS term COMMA term GREATER { Term.into (Term.WithPair ($2 , $4)) }
-    | CASE term OF INL LPAREN var RPAREN ARROW term COMMA INR LPAREN var RPAREN ARROW term
-        { Term.into (Term.Case ($2 , ($6 , $9) , ($13 , $16)))}
-    | LET term BE term IN term { Term.into (Term.Let ($2 , $4 , $6)) }
-
-    | LPAREN term term RPAREN { Term.into (Term.App ($2 , $3)) }
-    | LESS GREATER { Term.into (Term.Unit) }
-    | STAR { Term.into (Term.Star) }
-    | INL LPAREN term RPAREN LPAREN typ RPAREN { Term.into (Term.Inl ($6 , $3)) }
-    | INR LPAREN term RPAREN LPAREN typ RPAREN { Term.into (Term.Inr ($6 , $3)) }
-    | LAMBDA var COLON typ DOT term { Term.into (Term.Lam (($2 , $4) , $6))}
+    | var { Term.PVar $1 }
+    | LPAREN term TENSOR term RPAREN { (Term.PTenPair ($2 , $4)) }
+    | LESS term COMMA term GREATER { (Term.PWithPair ($2 , $4)) }
+    | CASE var OF INL LPAREN var RPAREN ARROW term COMMA INR LPAREN var RPAREN ARROW term
+        { (Term.PCase ($2 , ($6 , $9) , ($13 , $16)))}
+    | LETTEN term BE var IN term { (Term.PLetten ($2 , $4 , $6)) }
+    | LETAPP term BE var IN term { (Term.PLetapp ($2 , $4 , $6)) }
+    | LETFST term BE var IN term { (Term.PLetfst ($2 , $4 , $6)) }
+    | LETSND term BE var IN term { (Term.PLetsnd ($2 , $4 , $6)) }
+    | LPAREN term term RPAREN { (Term.PApp ($2 , $3)) }
+    | LESS GREATER { (Term.PUnit) }
+    | STAR { (Term.PStar) }
+    | INL LPAREN term RPAREN { (Term.PInl ($3)) }
+    | INR LPAREN term RPAREN { (Term.PInr ($3)) }
+    | LAMBDA var COLON typ DOT term { (Term.PLam (($2 , $4) , $6))}
 ;
 
 termEXP: term EOL { $1 }
