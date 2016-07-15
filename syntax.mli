@@ -19,26 +19,6 @@ module TermVar : sig
   val toUserString : t -> string
 end
 
-module ABT : sig
-  type 'oper t
-
-  type 'oper view
-    = Var of TermVar.t
-    | Binding of TermVar.t * 'oper t
-    | Oper of 'oper
-
-  exception Malformed
-
-  type 'a binding_modifier = TermVar.t -> int -> 'a -> 'a
-
-  val bind : 'oper binding_modifier -> 'oper t binding_modifier
-  val unbind : 'oper binding_modifier -> 'oper t binding_modifier
-  val into : 'oper binding_modifier -> 'oper view -> 'oper t
-  val out : 'oper binding_modifier -> 'oper t -> 'oper view
-
-  val aequiv : ('oper * 'oper -> bool) -> 'oper t * 'oper t -> bool
-end
-
 module Typ : sig
   type t =
          | Prop of string
@@ -57,6 +37,20 @@ end
 module Term : sig
   type termVar = TermVar.t
   type t
+  type pr = | PVar of string
+            | PLam of (string * Typ.t) * pr
+            | PApp of pr * pr
+            | PTenPair of pr * pr
+            | PWithPair of pr * pr
+            | PLetten of pr * string * pr
+            | PLetapp of pr * string * pr
+            | PLetfst of pr * string * pr
+            | PLetsnd of pr * string * pr
+            | PInl of pr
+            | PInr of pr
+            | PCase of string * (string * pr) * (string * pr)
+            | PUnit (* Top *)
+            | PStar (* One *)
 
   type view =
             | Var of termVar
@@ -64,10 +58,13 @@ module Term : sig
             | App of t * t
             | TenPair of t * t
             | WithPair of t * t
-            | Let of t * t * t
-            | Inl of (Typ.t * t)
-            | Inr of (Typ.t * t)
-            | Case of t * (termVar * t) * (termVar * t)
+            | Letten of t * termVar * t
+            | Letapp of t * termVar * t
+            | Letfst of t * termVar * t
+            | Letsnd of t * termVar * t
+            | Inl of t
+            | Inr of t
+            | Case of termVar * (termVar * t) * (termVar * t)
             | Unit (* Top *)
             | Star (* One *)
 
@@ -76,5 +73,4 @@ module Term : sig
   val aequiv : t -> t -> bool
   val toString : t -> string
 
-  val subst : t -> termVar -> t -> t
 end
