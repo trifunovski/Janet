@@ -29,6 +29,10 @@ let ctxEquiv ctx1 ctx2 =
   then try (TmHshtbl.iter (func ctx2) ctx1; true) with | _ -> false
   else false
 
+let printCtxTerm tm tp = print_string ((TermVar.toUserString tm) ^ " : " ^ (Typ.toString tp) ^ ", ")
+
+let printCtx ctx = TmHshtbl.iter (printCtxTerm) ctx
+
 let rec fixTerm links tm =
   match tm with
   | Term.PVar x -> (match find links x with
@@ -230,28 +234,32 @@ let typechecker ctx tm tp =
     | Some rest_ctx -> if TmHshtbl.length rest_ctx = 0 then true else false
     | _ -> false
 
+let rec map f = function
+  | [] -> []
+  | x :: xs -> (f x) :: (map f xs)
+
 let rec get_context ctx links =
-  let () = print_endline "Enter a term from the context or enter END if you are done: " in
+  let () = print_endline "Enter the context:" in
   let str = input_line stdin in
-  if str = "END" then (ctx , links) else
-    let lexbuf = Lexing.from_string str in
-    let (s , x , a) = Parser.ctxtmEXP Lexer.exp_token lexbuf in
-    let () = TmHshtbl.add ctx x a in
-    let () = Hashtbl.add links s x in
-    get_context ctx links
+  let lexbuf = Lexing.from_string str in
+  let ctxlist = Parser.ctxtmEXP Lexer.exp_token lexbuf in
+  let _ = map (fun (s , x , a) -> TmHshtbl.add ctx x a; Hashtbl.add links s x; (s , x , a)) ctxlist  in
+    (ctx , links)
 
 let main (_ : unit) =
-  let () = print_endline "Time to enter the context." in
   let (ctx , links) = get_context (TmHshtbl.create 256) (Hashtbl.create 256) in
+  let starting = TmHshtbl.copy ctx in
   let () = print_endline "Enter the intended type of the term:" in
   let strtp = input_line stdin in
   let tpbuf = Lexing.from_string strtp in
   let tp = Parser.typEXP Lexer.exp_token tpbuf in
-  let () = print_endline ("The selected type is " ^ (Typ.toString tp)) in
   let () = print_endline "Enter the term you want typechecked: " in
   let str = input_line stdin in
   let lexbuf = Lexing.from_string str in
   let ptm = Parser.termEXP Lexer.exp_token lexbuf in
   let tm = fixTerm links ptm in
-  let () = print_endline ("The selected term is " ^ (Term.toString tm)) in
-  if typechecker ctx tm tp then print_endline "The term typechecks." else print_endline "The term doesn't typecheck."
+  if typechecker ctx tm tp
+  then let () = printCtx starting in
+  print_endline ("⊢ " ^ (Term.toString tm) ^ " : " ^ (Typ.toString tp))
+  else let () = printCtx starting in
+  print_endline ("⊬ " ^ (Term.toString tm) ^ " : " ^ (Typ.toString tp))

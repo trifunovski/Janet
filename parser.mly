@@ -9,7 +9,7 @@
 %type <Syntax.Typ.t> typEXP
 %type <Syntax.Term.pr> termEXP
 %type <string> var
-%type <string * Syntax.TermVar.t * Syntax.Typ.t> ctxtmEXP
+%type <(string * Syntax.TermVar.t * Syntax.Typ.t) list> ctxtmEXP
 
 %%
 
@@ -34,8 +34,11 @@ var: VAR { $1 }
 ctxtm: var COLON typ { ($1 , (TermVar.newT $1) , $3) }
 ;
 
-ctxtmEXP: ctxtm EOL { $1 }
-        | ctxtm EOF { $1 }
+ctxtmEXP: ctxtm COMMA ctxtmEXP { $1 :: $3 }
+        | ctxtm EOL { [$1] }
+        | ctxtm EOF { [$1] }
+        | EOL { [] }
+        | EOF { [] }
 ;
 
 term:
