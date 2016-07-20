@@ -29,7 +29,7 @@ let ctxEquiv ctx1 ctx2 =
   then try (TmHshtbl.iter (func ctx2) ctx1; true) with | _ -> false
   else false
 
-let printCtxTerm tm tp = print_string ((TermVar.toUserString tm) ^ " : " ^ (Typ.toString tp) ^ ", ")
+let printCtxTerm tm tp = print_string ((TermVar.toUserString tm) ^ " : " ^ (Typ.toString tp) ^ " ")
 
 let printCtx ctx = TmHshtbl.iter (printCtxTerm) ctx
 
@@ -263,3 +263,162 @@ let main (_ : unit) =
   print_endline ("⊢ " ^ (Term.toString tm) ^ " : " ^ (Typ.toString tp))
   else let () = printCtx starting in
   print_endline ("⊬ " ^ (Term.toString tm) ^ " : " ^ (Typ.toString tp))
+
+
+type hole = int
+let holeCtr = ref 0
+
+type drv = Axiom of context * Term.t * Typ.t
+         | Node1 of (context * Term.t * Typ.t) * drv
+         | Node2 of (context * Term.t * Typ.t) * drv * drv
+         | Unprocessed of context * TermVar.t * Typ.t
+
+let rec completed = function
+  | Axiom (_) -> true
+  | Node1 ((_) , d) -> completed d
+  | Node2 ((_) , d1 , d2) -> completed d1 && completed d2
+  | _ -> false
+
+let printUnprocessed ctx holTermVar tp =
+  let () = printCtx ctx in print_endline ("⊢ " ^ TermVar.toUserString holTermVar ^ " : " ^ (Typ.toString tp))
+
+let printStep ctx tm tp =
+  let () = printCtx ctx in print_endline ("⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp))
+
+
+let rec printDrv = function
+  | Axiom (ctx , tm , tp) -> printStep ctx tm tp
+  | Node1 ((ctx , tm , tp) , d) -> printStep ctx tm tp ; printDrv d
+  | Node2 ((ctx , tm , tp) , d1 , d2) -> printStep ctx tm tp ; printDrv d1 ; printDrv d2
+  | Unprocessed (ctx , tmvar , tp) -> printUnprocessed ctx tmvar tp
+
+let rec getHoleComponents holTermVar = function
+  | Unprocessed (ctx , h , tp) -> if TermVar.equal holTermVar h then Some (ctx , tp) else None
+  | Node1 ((_) , d) -> getHoleComponents holTermVar d
+  | Node2 ((_) , d1 , d2) ->
+    (match getHoleComponents holTermVar d1 with
+      | None -> getHoleComponents holTermVar d2
+      | Some (ctx , tp) -> Some (ctx , tp))
+  | _ -> None
+
+
+let rec replaceInTerm oldTermVar newTerm tm =
+  let reccall = replaceInTerm oldTermVar newTerm in
+  match Term.out tm with
+  | Term.Var x -> if TermVar.equal x oldTermVar then newTerm else tm
+  | Term.Lam ((x , tp) , tm') -> Term.into ( Term.Lam ((x,tp) , reccall tm'))
+  | Term.App (t1 , t2) -> Term.into (Term.App (reccall t1 , reccall t2))
+  | Term.TenPair (t1 , t2) -> Term.into (Term.TenPair (reccall t1 , reccall t2))
+  | Term.WithPair (t1 , t2) -> Term.into (Term.WithPair (reccall t1 , reccall t2))
+  | Term.Letten (t1 , v , t2) -> Term.into (Term.Letten (reccall t1 , v , reccall t2))
+  | Term.Letapp (t1 , v , t2) -> Term.into (Term.Letapp (reccall t1 , v , reccall t2))
+  | Term.Letfst (t1 , v , t2) -> Term.into (Term.Letfst (reccall t1 , v , reccall t2))
+  | Term.Letsnd (t1 , v , t2) -> Term.into (Term.Letsnd (reccall t1 , v , reccall t2))
+  | Term.Inl t' -> Term.into (Term.Inl (reccall t'))
+  | Term.Inr t' -> Term.into (Term.Inr (reccall t'))
+  | Term.Case (z , (x , t1) , (y , t2)) -> Term.into (Term.Case (z , (x , reccall t1) , (y , reccall t2)))
+  | Term.Unit -> tm
+  | Term.Star -> tm
+
+let rec replaceHole oldTermVar newTerm newDrv = function
+  | Unprocessed (ctx , h , tp) -> if TermVar.equal h oldTermVar then newDrv else Unprocessed (ctx , h , tp)
+  | Node1 ((ctx , tm , tp) , d) -> Node1 ((ctx , replaceInTerm oldTermVar newTerm tm, tp) , replaceHole oldTermVar newTerm newDrv d)
+  | Node2 ((ctx , tm , tp) , d1 , d2) -> Node2 ((ctx , replaceInTerm oldTermVar newTerm tm , tp) ,
+        replaceHole oldTermVar newTerm newDrv d1, replaceHole oldTermVar newTerm newDrv d2)
+  | Axiom (ctx , tm , tp) -> Axiom (ctx , tm , tp)
+
+
+let possibleRules ctx = function
+    | Typ.Prop a ->
+        (match TmHshtbl.fold (fun k v acc -> (k,v)::acc) ctx [] with
+        | [(x,tp)] when Typ.aequiv (Typ.Prop a) tp -> ["I" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+        | _ -> ["Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"])
+    | Typ.Tensor (t1 , t2) -> ["Xright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+    | Typ.One ->
+        if (TmHshtbl.length ctx = 0) then
+        ["1right"]
+        else []
+    | Typ.Lolli (_ , _) -> ["-oright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+    | Typ.With (_ , _) -> ["&right" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+    | Typ.Top -> []
+    | Typ.Or (_ , _) -> ["+right1" ; "+right2" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+let rec printList = function
+    | [] -> print_endline ""
+    | x :: xs -> print_string (x ^ " "); printList xs
+
+(*
+let split ctx a b =
+  let () = printCtx ctx in
+  let () = print_endline ("Choose a subset of the context that you would like to use to prove a term of type "^ Typ.toString (a)) in
+  let
+*)
+
+let rec holes drv holeTerms =
+  let () = print_string "Enter the hole you want to work on: " in
+  let holnum = read_int () in
+  match Hashtbl.mem holeTerms holnum with
+  | false -> print_endline "You entered a non-existent hole number. Try again."; holes drv holeTerms
+  | true ->
+    let holTerm : TermVar.t = Hashtbl.find holeTerms holnum in
+    let res = getHoleComponents holTerm drv in
+    (match res with
+      | None -> print_endline "You entered a non-existent hole number. Try again."; holes drv holeTerms
+      | Some (ctx , tp) ->
+    let () = printUnprocessed ctx holTerm tp in
+    let () = print_endline "Possible rules to apply:" in
+    let () = printList (possibleRules ctx tp) in
+    let () = print_endline "Enter a name of a rule, or type back to go back:" in
+    let str = input_line stdin in
+      (match (str , tp) with
+      | ("back" , _) -> holes drv holeTerms
+      | ("I" , tp) ->
+        (match TmHshtbl.fold (fun k v acc -> (k,v)::acc) ctx [] with
+        | [(x,tp')] when Typ.aequiv tp tp' ->
+            proofAssistant (replaceHole holTerm (Term.into (Term.Var x))
+                (Axiom (ctx , (Term.into (Term.Var x)) , tp)) drv) holeTerms
+        | _ -> print_endline "bad context"; holes drv holeTerms)
+      | ("1right" , Typ.One) when TmHshtbl.length ctx = 0 ->
+          proofAssistant (replaceHole holTerm (Term.into Term.Star) (Axiom (ctx ,Term.into Term.Star , tp )) drv) holeTerms
+      | ("-oright" , Typ.Lolli (a , b)) ->
+          let x = TermVar.newT "x" in
+          let newCtx = TmHshtbl.copy ctx in
+          let () = TmHshtbl.add newCtx x a in
+          let newHoleNum = (holeCtr := !holeCtr + 1; !holeCtr) in
+          let newHole = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum)  ^" }") in
+          let () = Hashtbl.add holeTerms newHoleNum newHole in
+            proofAssistant (replaceHole holTerm (Term.into (Term.Lam ((x , a) ,
+                  (Term.into (Term.Var newHole))) ))
+                  (Node1 ((ctx , Term.into (Term.Lam ((x , a) ,
+                  (Term.into (Term.Var newHole)))) , tp) ,
+                  (Unprocessed (newCtx , newHole , b)) ))
+              drv) holeTerms
+      (*      | ("Xright" , Typ.Tensor (a,b)) ->
+                      let (ctx1 , ctx2) = split ctx a b
+      | "&right" ->
+      | "+right1" ->
+      | "+right2" ->
+      | "Xleft" ->
+      | "-oleft" ->
+      | "&left1" ->
+      | "&left2" ->
+      | "+left" ->
+      | "1left" -> *)
+      | _ -> print_endline "Unrecognized rule." ; holes drv holeTerms))
+and proofAssistant drv holeTerms =
+  let () = printDrv drv in
+  match (completed drv) with
+  | true -> print_endline "The proof is complete."
+  | false -> holes drv holeTerms
+
+let main2 (_ : unit) =
+  let (ctx , links) = get_context (TmHshtbl.create 256) (Hashtbl.create 256) in
+  let () = print_endline "Enter the intended type of the term:" in
+  let strtp = input_line stdin in
+  let tpbuf = Lexing.from_string strtp in
+  let tp = Parser.typEXP Lexer.exp_token tpbuf in
+  let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
+  let hole1termvar = TermVar.newT ("{ ?" ^ (string_of_int hole1) ^" }") in
+  let tree = Unprocessed (ctx , hole1termvar , tp) in
+  let holeHT = Hashtbl.create 256 in
+  let () = Hashtbl.add holeHT hole1 hole1termvar in
+    proofAssistant tree holeHT

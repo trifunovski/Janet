@@ -138,7 +138,7 @@ struct
   let rec toString (tm : t) : string =
     match tm with
       | Var x -> TermVar.toUserString x
-      | Lam ((x , t) , tm) -> "\\" ^ TermVar.toString x ^":"^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
+      | Lam ((x , t) , tm) -> "λ" ^ TermVar.toUserString x ^" : "^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
       | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
       | TenPair (t1 , t2) -> toString t1 ^ " X " ^ toString t2
       | WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
