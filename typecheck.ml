@@ -1,6 +1,8 @@
 open Syntax
 open Parser
 
+exception TmTp of TermVar.t * Typ.t
+
 module TmHshtbl = Hashtbl.Make(Syntax.TermVar)
 
 type context = Typ.t TmHshtbl.t
@@ -12,6 +14,18 @@ let lookup ctx v = try
 let add ctx v tp = TmHshtbl.add ctx v tp
 
 let remove ctx v = TmHshtbl.remove ctx v
+
+let chooseFromCtx ctx1 =
+  let ctx2 = TmHshtbl.create 256 in
+  let () = print_endline "For each term type 1 if you want it to go to the left context, anything else for the right" in
+  TmHshtbl.iter (
+    fun tm tp ->
+      let () = print_endline ((TermVar.toUserString tm) ^ " : " ^ (Typ.toString tp)) in
+      let str = input_line stdin in
+      match str with
+      | "1" -> ()
+      | _ -> remove ctx1 tm; add ctx2 tm tp
+    ) ctx1 ; (ctx1 , ctx2)
 
 let find links s = try
   (Some (Hashtbl.find links s))
@@ -265,7 +279,6 @@ let main (_ : unit) =
   print_endline ("⊬ " ^ (Term.toString tm) ^ " : " ^ (Typ.toString tp))
 
 
-type hole = int
 let holeCtr = ref 0
 
 type drv = Axiom of context * Term.t * Typ.t
@@ -321,27 +334,40 @@ let rec replaceInTerm oldTermVar newTerm tm =
   | Term.Star -> tm
 
 let rec replaceHole oldTermVar newTerm newDrv = function
-  | Unprocessed (ctx , h , tp) -> if TermVar.equal h oldTermVar then newDrv else Unprocessed (ctx , h , tp)
-  | Node1 ((ctx , tm , tp) , d) -> Node1 ((ctx , replaceInTerm oldTermVar newTerm tm, tp) , replaceHole oldTermVar newTerm newDrv d)
-  | Node2 ((ctx , tm , tp) , d1 , d2) -> Node2 ((ctx , replaceInTerm oldTermVar newTerm tm , tp) ,
-        replaceHole oldTermVar newTerm newDrv d1, replaceHole oldTermVar newTerm newDrv d2)
+  | Unprocessed (ctx , h , tp) ->
+      if TermVar.equal h oldTermVar
+      then newDrv
+      else Unprocessed (ctx , h , tp)
+  | Node1 ((ctx , tm , tp) , d) ->
+      Node1 ((ctx , replaceInTerm oldTermVar newTerm tm, tp) ,
+                  replaceHole oldTermVar newTerm newDrv d)
+  | Node2 ((ctx , tm , tp) , d1 , d2) ->
+      Node2 ((ctx , replaceInTerm oldTermVar newTerm tm , tp) ,
+        replaceHole oldTermVar newTerm newDrv d1,
+        replaceHole oldTermVar newTerm newDrv d2)
   | Axiom (ctx , tm , tp) -> Axiom (ctx , tm , tp)
 
 
-let possibleRules ctx = function
+let possibleRules ctx tp =
+  let idtp = ref 0 in
+  let () = TmHshtbl.iter (fun tm tp' -> if Typ.aequiv tp tp' then idtp := !idtp + 1 else ()) ctx in
+  let l = if !idtp > 0 then ["I"] else [] in
+  match tp with
     | Typ.Prop a ->
         (match TmHshtbl.fold (fun k v acc -> (k,v)::acc) ctx [] with
         | [(x,tp)] when Typ.aequiv (Typ.Prop a) tp -> ["I" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
         | _ -> ["Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"])
-    | Typ.Tensor (t1 , t2) -> ["Xright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+    | Typ.Tensor (t1 , t2) -> l@["Xright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
     | Typ.One ->
         if (TmHshtbl.length ctx = 0) then
         ["1right"]
         else []
-    | Typ.Lolli (_ , _) -> ["-oright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
-    | Typ.With (_ , _) -> ["&right" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+    | Typ.Lolli (_ , _) -> l@["-oright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+    | Typ.With (_ , _) -> l@["&right" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
     | Typ.Top -> []
-    | Typ.Or (_ , _) -> ["+right1" ; "+right2" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+    | Typ.Or (_ , _) -> l@["+right1" ; "+right2" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+
+
 let rec printList = function
     | [] -> print_endline ""
     | x :: xs -> print_string (x ^ " "); printList xs
@@ -386,28 +412,131 @@ let rec holes drv holeTerms =
           let newHoleNum = (holeCtr := !holeCtr + 1; !holeCtr) in
           let newHole = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum)  ^" }") in
           let () = Hashtbl.add holeTerms newHoleNum newHole in
-            proofAssistant (replaceHole holTerm (Term.into (Term.Lam ((x , a) ,
-                  (Term.into (Term.Var newHole))) ))
-                  (Node1 ((ctx , Term.into (Term.Lam ((x , a) ,
-                  (Term.into (Term.Var newHole)))) , tp) ,
-                  (Unprocessed (newCtx , newHole , b)) ))
-              drv) holeTerms
-      (*      | ("Xright" , Typ.Tensor (a,b)) ->
-                      let (ctx1 , ctx2) = split ctx a b
-      | "&right" ->
-      | "+right1" ->
-      | "+right2" ->
-      | "Xleft" ->
+          let newTerm = (Term.into (Term.Lam ((x , a) , (Term.into (Term.Var newHole))) )) in
+            proofAssistant
+                  (replaceHole
+                      holTerm
+                      newTerm
+                      (Node1 ((ctx , newTerm , tp) ,
+                      (Unprocessed (newCtx , newHole , b)) ))
+                      drv)
+                  holeTerms
+      | ("&right" , Typ.With (a , b)) ->
+          let newHoleNum1 = (holeCtr := !holeCtr + 1; !holeCtr) in
+          let newHole1 = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum1)  ^" }") in
+          let newHoleNum2 = (holeCtr := !holeCtr + 1; !holeCtr) in
+          let newHole2 = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum2)  ^" }") in
+          let () = Hashtbl.add holeTerms newHoleNum1 newHole1 in
+          let () = Hashtbl.add holeTerms newHoleNum2 newHole2 in
+          let newTerm = (Term.into (Term.WithPair (Term.into (Term.Var newHole1) ,
+          Term.into (Term.Var newHole2) ))) in
+            proofAssistant
+              (replaceHole
+                 holTerm
+                 newTerm
+                 (Node2 ((ctx , newTerm , tp),
+                 Unprocessed (ctx , newHole1 , a),
+                 Unprocessed (ctx , newHole2 , b)))
+                 drv)
+              holeTerms
+      | ("+right1" , Typ.Or (a , b)) ->
+            let newHoleNum = (holeCtr := !holeCtr + 1; !holeCtr) in
+            let newHole = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum)  ^" }") in
+            let () = Hashtbl.add holeTerms newHoleNum newHole in
+            let newTerm = (Term.into (Term.Inl (Term.into (Term.Var newHole)))) in
+            proofAssistant
+                (replaceHole
+                    holTerm
+                    newTerm
+                    (Node1 ((ctx , newTerm , tp) ,
+                    Unprocessed (ctx , newHole , a)))
+                    drv)
+                holeTerms
+      | ("+right2" , Typ.Or (a , b))->
+            let newHoleNum = (holeCtr := !holeCtr + 1; !holeCtr) in
+            let newHole = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum)  ^" }") in
+            let () = Hashtbl.add holeTerms newHoleNum newHole in
+            let newTerm = (Term.into (Term.Inr (Term.into (Term.Var newHole)))) in
+            proofAssistant
+                (replaceHole
+                    holTerm
+                    newTerm
+                    (Node1 ((ctx , newTerm , tp) ,
+                    Unprocessed (ctx , newHole , b)))
+                    drv)
+                holeTerms
+      | ("Xright" , Typ.Tensor (a,b)) ->
+                      let (ctx1 , ctx2) = chooseFromCtx ctx in
+                      let newHoleNum1 = (holeCtr := !holeCtr + 1; !holeCtr) in
+                      let newHole1 = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum1)  ^" }") in
+                      let newHoleNum2 = (holeCtr := !holeCtr + 1; !holeCtr) in
+                      let newHole2 = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum2)  ^" }") in
+                      let () = Hashtbl.add holeTerms newHoleNum1 newHole1 in
+                      let () = Hashtbl.add holeTerms newHoleNum2 newHole2 in
+                      let newTerm = (Term.into (Term.TenPair (Term.into (Term.Var newHole1) , Term.into (Term.Var newHole2)))) in
+                proofAssistant
+                    (replaceHole
+                        holTerm
+                        newTerm
+                        (Node2 ((ctx , newTerm , tp) ,
+                        Unprocessed (ctx1 , newHole1 , a) ,
+                        Unprocessed (ctx2 , newHole2 , b) ))
+                        drv)
+                    holeTerms
+      | ("Xleft" , _) ->
+          let res = (try (
+            (TmHshtbl.iter (fun tm' tp' ->
+                          match tp' with
+                           | Typ.Tensor (a , b) ->
+                              let () = print_endline ("Do you want to use this variable: " ^ (TermVar.toUserString tm') ^" : " ^ (Typ.toString tp')) in
+                              let str = input_line stdin in
+                              (match str with
+                                | "yes" -> raise (TmTp (tm' , tp'))
+                                | _ -> ()
+                              )
+                           | _ -> ()) ctx) ; None
+            ) with
+            | TmTp (tm' , tp') -> Some (tm' , tp')
+            | _ -> None)
+            in
+          (match res with
+            | Some (tm' , Typ.Tensor (a , b)) ->
+                let oldctx = TmHshtbl.copy ctx in
+                let () = remove ctx tm' in
+                let x = TermVar.newT "x" in
+                let y = TermVar.newT "y" in
+                let () = add ctx x a in
+                let () = add ctx y b in
+                let newHoleNum = (holeCtr := !holeCtr + 1; !holeCtr) in
+                let newHole = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum)  ^" }") in
+                let () = Hashtbl.add holeTerms newHoleNum newHole in
+                let newTerm =
+                Term.into (Term.Letten
+                              (Term.into (Term.TenPair (Term.into (Term.Var x) ,Term.into (Term.Var y))),
+                              tm' ,
+                              Term.into (Term.Var newHole) )) in
+                proofAssistant
+                  (replaceHole
+                      holTerm
+                      newTerm
+                      (Node1 ((oldctx , newTerm , tp) , Unprocessed (ctx , newHole , tp)))
+                      drv)
+                  holeTerms
+            | _ -> print_endline "Invalid rule." ; holes drv holeTerms
+            )
+    (*
       | "-oleft" ->
       | "&left1" ->
       | "&left2" ->
       | "+left" ->
-      | "1left" -> *)
-      | _ -> print_endline "Unrecognized rule." ; holes drv holeTerms))
+      | "1left" ->
+
+      *)
+      | _ -> print_endline "Invalid rule." ; holes drv holeTerms))
 and proofAssistant drv holeTerms =
   let () = printDrv drv in
   match (completed drv) with
-  | true -> print_endline "The proof is complete."
+  | true -> holeCtr := 0 ; print_endline "The proof is complete."
   | false -> holes drv holeTerms
 
 let main2 (_ : unit) =

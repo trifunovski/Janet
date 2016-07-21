@@ -41,12 +41,12 @@ struct
     | _ -> false
 
   let rec toString = function
-    | Tensor (t1 , t2) -> "(" ^ toString t1 ^ " X " ^ toString t2 ^ ")"
+    | Tensor (t1 , t2) -> "(" ^ toString t1 ^ " ⊗ " ^ toString t2 ^ ")"
     | One -> "1"
     | Top -> "T"
     | Prop a -> a
-    | Lolli (t1 , t2) -> "(" ^ toString t1 ^ " --o " ^ toString t2 ^ ")"
-    | Or (t1 , t2) -> "(" ^ toString t1 ^ " + " ^ toString t2 ^ ")"
+    | Lolli (t1 , t2) -> "(" ^ toString t1 ^ " ⊸ " ^ toString t2 ^ ")"
+    | Or (t1 , t2) -> "(" ^ toString t1 ^ " ⊕ " ^ toString t2 ^ ")"
     | With (t1 , t2) -> "(" ^ toString t1 ^ " & " ^ toString t2 ^ ")"
 
 end
@@ -91,7 +91,7 @@ struct
   let into (v : view) : t = v
 
   let swapVar newV oldV curV =
-    if TermVar.equal oldV curV then newV else oldV
+    if TermVar.equal oldV curV then newV else curV
 
   let rec swapInTerm newV oldV t =
   let st = swapInTerm newV oldV in
