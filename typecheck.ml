@@ -292,18 +292,51 @@ let rec completed = function
   | Node2 ((_) , d1 , d2) -> completed d1 && completed d2
   | _ -> false
 
-let printUnprocessed ctx holTermVar tp =
-  let () = printCtx ctx in print_endline ("⊢ " ^ TermVar.toUserString holTermVar ^ " : " ^ (Typ.toString tp))
+let ctxToString ctx =
+  let str = TmHshtbl.fold (fun tm tp s -> (TermVar.toUserString tm) ^ " : " ^ (Typ.toString tp) ^" , "^ s ) ctx "" in
+    if String.length str > 0 then String.sub str 0 (String.length str - 2) else str
 
-let printStep ctx tm tp =
-  let () = printCtx ctx in print_endline ("⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp))
+let thisStep = function
+  | Unprocessed (ctx , tmvar , tp) -> (ctxToString ctx) ^ "⊢ " ^ TermVar.toUserString tmvar ^ " : " ^ (Typ.toString tp)
+  | Axiom (ctx , tm , tp) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
+  | Node1 ((ctx , tm , tp) , _) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
+  | Node2 ((ctx , tm , tp) , _ , _) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
 
+let rec atLevel n drv =
+  match (n , drv) with
+  | (1 , drv) -> [thisStep drv]
+  | (n , drv) when n < 1 -> []
+  | (_ , Node1 ((_) , d)) -> atLevel (n - 1) d
+  | (_ , Node2 ((_) , d1 , d2)) -> (atLevel (n-1) d1) @ (atLevel (n-1) d2)
+  | _ -> []
 
-let rec printDrv = function
-  | Axiom (ctx , tm , tp) -> printStep ctx tm tp
-  | Node1 ((ctx , tm , tp) , d) -> printStep ctx tm tp ; printDrv d
-  | Node2 ((ctx , tm , tp) , d1 , d2) -> printStep ctx tm tp ; printDrv d1 ; printDrv d2
-  | Unprocessed (ctx , tmvar , tp) -> printUnprocessed ctx tmvar tp
+let rec depth = function
+  | Unprocessed _ -> 1
+  | Axiom _ -> 1
+  | Node1 ((_) , d) -> 1 + depth d
+  | Node2 ((_) , d1 , d2) -> 1 + max (depth d1) (depth d2)
+
+let rec listToString = function
+  | [] -> ""
+  | x :: xs -> x ^ "      " ^ (listToString xs)
+
+let rec printDrv drv =
+  let dpth = depth drv in
+  let rec helper n s =
+    let l = atLevel n drv in
+    match n with
+    | 0 -> s
+    | 1 -> s ^ (listToString l)
+    | _ ->  helper (n-1) (s ^ (listToString l) ^ "\n")
+  in
+    print_endline (helper dpth "")
+(*
+  match drv with
+  | Axiom (ctx , tm , tp) -> print_endline (thisStep drv)
+  | Node1 ((ctx , tm , tp) , d) -> print_endline (thisStep drv) ; printDrv d
+  | Node2 ((ctx , tm , tp) , d1 , d2) -> print_endline (thisStep drv) ; printDrv d1 ; printDrv d2
+  | Unprocessed (ctx , tmvar , tp) -> print_endline (thisStep drv)
+*)
 
 let rec getHoleComponents holTermVar = function
   | Unprocessed (ctx , h , tp) -> if TermVar.equal holTermVar h then Some (ctx , tp) else None
@@ -390,7 +423,7 @@ let rec holes drv holeTerms =
     (match res with
       | None -> print_endline "You entered a non-existent hole number. Try again."; holes drv holeTerms
       | Some (ctx , tp) ->
-    let () = printUnprocessed ctx holTerm tp in
+    let () = print_endline (thisStep (Unprocessed (ctx , holTerm , tp))) in
     let () = print_endline "Possible rules to apply:" in
     let () = printList (possibleRules ctx tp) in
     let () = print_endline "Enter a name of a rule, or type back to go back:" in
