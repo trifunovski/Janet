@@ -316,18 +316,26 @@ let rec depth = function
   | Node1 ((_) , d) -> 1 + depth d
   | Node2 ((_) , d1 , d2) -> 1 + max (depth d1) (depth d2)
 
-let rec listToString = function
-  | [] -> ""
-  | x :: xs -> x ^ "      " ^ (listToString xs)
+let rec repeat a s n =
+  match n with
+  | 0 -> s
+  | _ -> a ^ (repeat a s (n-1))
+
+let rec listToString l s s' =
+  match l with
+  | [] -> s' ^ "\n" ^ s
+  | [x] -> listToString [] (s ^ x) (s' ^ (repeat "-" "" (String.length x)))
+  | x :: xs -> listToString xs (s ^ x ^ "      ")  (s' ^ (repeat "-" "" (String.length x)) ^ "      ")
 
 let rec printDrv drv =
   let dpth = depth drv in
   let rec helper n s =
-    let l = atLevel n drv in
+    let s' = listToString (atLevel n drv) "" "" in
+    let size = String.length s' in
     match n with
     | 0 -> s
-    | 1 -> s ^ (listToString l)
-    | _ ->  helper (n-1) (s ^ (listToString l) ^ "\n")
+    | 1 -> s ^ "\n" ^ s'
+    | _ ->  helper (n-1) (s ^ "\n" ^ s')
   in
     print_endline (helper dpth "")
 (*
