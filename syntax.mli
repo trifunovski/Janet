@@ -26,7 +26,6 @@ module Typ : sig
          | One
          | Lolli of t * t
          | With of t * t
-         | Top
          | Or of t * t
 
   val aequiv : t -> t -> bool
@@ -49,7 +48,6 @@ module Term : sig
             | PInl of pr
             | PInr of pr
             | PCase of string * (string * pr) * (string * pr)
-            | PUnit (* Top *)
             | PStar (* One *)
 
   type view =
@@ -65,7 +63,6 @@ module Term : sig
             | Inl of t
             | Inr of t
             | Case of termVar * (termVar * t) * (termVar * t)
-            | Unit (* Top *)
             | Star (* One *)
 
   val into : view -> t

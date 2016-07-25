@@ -155,7 +155,6 @@ let rec fixTerm links tm =
   | Term.PWithPair (pr1 , pr2) -> Term.into (Term.WithPair (fixTerm links pr1 , fixTerm links pr2))
   | Term.PInl (pr) -> Term.into (Term.Inl (fixTerm links pr))
   | Term.PInr (pr) -> Term.into (Term.Inr (fixTerm links pr))
-  | Term.PUnit -> Term.into (Term.Unit)
   | Term.PStar -> Term.into (Term.Star)
 
 let rec typecheck ctx tm tp =
@@ -371,7 +370,6 @@ let rec replaceInTerm oldTermVar newTerm tm =
   | Term.Inl t' -> Term.into (Term.Inl (reccall t'))
   | Term.Inr t' -> Term.into (Term.Inr (reccall t'))
   | Term.Case (z , (x , t1) , (y , t2)) -> Term.into (Term.Case (z , (x , reccall t1) , (y , reccall t2)))
-  | Term.Unit -> tm
   | Term.Star -> tm
 
 let rec replaceHole oldTermVar newTerm newDrv = function
@@ -405,7 +403,6 @@ let possibleRules ctx tp =
         else []
     | Typ.Lolli (_ , _) -> l@["-oright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
     | Typ.With (_ , _) -> l@["&right" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
-    | Typ.Top -> []
     | Typ.Or (_ , _) -> l@["+right1" ; "+right2" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
 
 
@@ -507,6 +504,7 @@ let rec holes drv holeTerms =
                     drv)
                 holeTerms
       | ("Xright" , Typ.Tensor (a,b)) ->
+                      let origCtx = TmHshtbl.copy ctx in
                       let (ctx1 , ctx2) = chooseFromCtx ctx in
                       let newHoleNum1 = (holeCtr := !holeCtr + 1; !holeCtr) in
                       let newHole1 = TermVar.newT ("{ ?" ^ (string_of_int newHoleNum1)  ^" }") in
@@ -519,7 +517,7 @@ let rec holes drv holeTerms =
                     (replaceHole
                         holTerm
                         newTerm
-                        (Node2 ((ctx , newTerm , tp) ,
+                        (Node2 ((origCtx , newTerm , tp) ,
                         Unprocessed (ctx1 , newHole1 , a) ,
                         Unprocessed (ctx2 , newHole2 , b) ))
                         drv)

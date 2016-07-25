@@ -3,7 +3,7 @@
 %}
 
 %token <string> VAR PROP
-%token DOT LAMBDA LOLLI TENPAIR WITHPAIR UNIT STAR TOP ONE LPAREN RPAREN COMMA COLON EOF EOL LETTEN LETAPP LETFST LETSND BE IN TENSOR OR WITH INL INR LESS GREATER CASE OF ARROW
+%token DOT LAMBDA LOLLI TENPAIR WITHPAIR UNIT STAR ONE LPAREN RPAREN COMMA COLON EOF EOL LETTEN LETAPP LETFST LETSND BE IN TENSOR OR WITH INL INR LESS GREATER CASE OF ARROW
 
 %start typEXP termEXP ctxtmEXP
 %type <Syntax.Typ.t> typEXP
@@ -17,7 +17,6 @@ typ:  LPAREN typ TENSOR typ RPAREN { Typ.Tensor ($2 , $4) }
     | LPAREN typ OR typ RPAREN { Typ.Or ($2 , $4) }
     | LPAREN typ WITH typ RPAREN { Typ.With ($2 , $4) }
     | ONE { Typ.One }
-    | TOP { Typ.Top }
     | LPAREN typ LOLLI typ RPAREN { Typ.Lolli ($2 , $4) }
     | PROP { Typ.Prop ($1) }
 ;
@@ -52,7 +51,6 @@ term:
     | LETFST term BE var IN term { (Term.PLetfst ($2 , $4 , $6)) }
     | LETSND term BE var IN term { (Term.PLetsnd ($2 , $4 , $6)) }
     | LPAREN term term RPAREN { (Term.PApp ($2 , $3)) }
-    | LESS GREATER { (Term.PUnit) }
     | STAR { (Term.PStar) }
     | INL LPAREN term RPAREN { (Term.PInl ($3)) }
     | INR LPAREN term RPAREN { (Term.PInr ($3)) }

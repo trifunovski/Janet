@@ -26,14 +26,12 @@ struct
          | One
          | Lolli of t * t
          | With of t * t
-         | Top
          | Or of t * t
 
   let rec aequiv t1 t2 =
     match (t1 , t2) with
     | (Tensor (t1a , t1b) , Tensor (t2a , t2b)) -> aequiv t1a t2a && aequiv t1b t2b
     | (One , One) -> true
-    | (Top , Top) -> true
     | (Prop a , Prop b) -> a = b
     | (Lolli (t1a , t1b) , Lolli (t2a , t2b)) -> aequiv t1a t2a && aequiv t1b t2b
     | (Or (t1a , t1b) , Or (t2a , t2b)) -> aequiv t1a t2a && aequiv t1b t2b
@@ -43,7 +41,6 @@ struct
   let rec toString = function
     | Tensor (t1 , t2) -> "(" ^ toString t1 ^ " ⊗ " ^ toString t2 ^ ")"
     | One -> "1"
-    | Top -> "T"
     | Prop a -> a
     | Lolli (t1 , t2) -> "(" ^ toString t1 ^ " ⊸ " ^ toString t2 ^ ")"
     | Or (t1 , t2) -> "(" ^ toString t1 ^ " ⊕ " ^ toString t2 ^ ")"
@@ -68,7 +65,6 @@ struct
             | Inl of t
             | Inr of t
             | Case of termVar * (termVar * t) * (termVar * t)
-            | Unit (* Top *)
             | Star (* One *)
   and t = view
 
@@ -84,7 +80,6 @@ struct
             | PInl of pr
             | PInr of pr
             | PCase of string * (string * pr) * (string * pr)
-            | PUnit (* Top *)
             | PStar (* One *)
 
 
@@ -140,7 +135,7 @@ struct
       | Var x -> TermVar.toUserString x
       | Lam ((x , t) , tm) -> "λ" ^ TermVar.toUserString x ^" : "^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
       | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
-      | TenPair (t1 , t2) -> toString t1 ^ " X " ^ toString t2
+      | TenPair (t1 , t2) -> "(" ^ toString t1 ^ " × " ^ toString t2 ^ ")"
       | WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
       | Letten (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
       | Letapp (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
@@ -150,12 +145,10 @@ struct
       | Inr t' -> "inr(" ^ toString t' ^ ")"
       | Case (z , (x , u) , (y , v)) -> "case " ^ TermVar.toString z ^ " of inl(" ^ TermVar.toString x ^")" ^
           " => " ^ toString u ^ " , " ^ "inr(" ^ TermVar.toString y ^ ") => " ^ toString v
-      | Unit -> "T"
-      | Star -> "1"
+      | Star -> "*"
 
   let rec aequiv (tm1 : t) (tm2 : t) : bool =
     match (tm1 , tm2) with
-      | (Unit , Unit) -> true
       | (Star , Star) -> true
       | (Var x , Var y) -> TermVar.equal x y
       | (Inl t , Inl t') -> aequiv t t'
