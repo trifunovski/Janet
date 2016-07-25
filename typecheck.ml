@@ -243,7 +243,8 @@ let rec typecheck ctx tm tp =
   | _ -> None
 
 let typechecker ctx tm tp =
-  match typecheck ctx tm tp with
+  let workingctx = TmHshtbl.copy ctx in
+  match typecheck workingctx tm tp with
     | Some rest_ctx -> if TmHshtbl.length rest_ctx = 0 then true else false
     | _ -> false
 
@@ -387,10 +388,16 @@ let rec replaceHole oldTermVar newTerm newDrv = function
   | Axiom (ctx , tm , tp) -> Axiom (ctx , tm , tp)
 
 
+let getBottom = function
+  | Unprocessed (ctx , tmvar , tp) -> (ctx , Term.into (Term.Var tmvar) , tp)
+  | Axiom (ctx , tm , tp) -> (ctx , tm , tp)
+  | Node1 ((ctx , tm , tp) , _ ) -> (ctx , tm , tp)
+  | Node2 ((ctx , tm , tp) , _ , _) -> (ctx , tm , tp)
+
 let possibleRules ctx tp =
   let idtp = ref 0 in
   let () = TmHshtbl.iter (fun tm tp' -> if Typ.aequiv tp tp' then idtp := !idtp + 1 else ()) ctx in
-  let l = if !idtp > 0 then ["I"] else [] in
+  let l = if ((!idtp > 0) && (TmHshtbl.length ctx = 1)) then ["I"] else [] in
   match tp with
     | Typ.Prop a ->
         (match TmHshtbl.fold (fun k v acc -> (k,v)::acc) ctx [] with
@@ -409,13 +416,6 @@ let possibleRules ctx tp =
 let rec printList = function
     | [] -> print_endline ""
     | x :: xs -> print_string (x ^ " "); printList xs
-
-(*
-let split ctx a b =
-  let () = printCtx ctx in
-  let () = print_endline ("Choose a subset of the context that you would like to use to prove a term of type "^ Typ.toString (a)) in
-  let
-*)
 
 let rec holes drv holeTerms =
   let () = print_string "Enter the hole you want to work on: " in
@@ -569,14 +569,15 @@ let rec holes drv holeTerms =
       | "&left2" ->
       | "+left" ->
       | "1left" ->
-
       *)
       | _ -> print_endline "Invalid rule." ; holes drv holeTerms))
 and proofAssistant drv holeTerms =
   let () = printDrv drv in
-  match (completed drv) with
-  | true -> holeCtr := 0 ; print_endline "The proof is complete."
-  | false -> holes drv holeTerms
+  let (ctx , tm , tp) = getBottom drv in
+  match (completed drv , typechecker ctx tm tp) with
+  | (true , true) -> holeCtr := 0 ; print_endline "The proof is complete."
+  | (true , false) -> failwith "Construction failure."
+  | (false , _) -> holes drv holeTerms
 
 let main2 (_ : unit) =
   let (ctx , links) = get_context (TmHshtbl.create 256) (Hashtbl.create 256) in
