@@ -18,3 +18,5 @@ lexer.cmo
 lexer.cmi
 .DS_Store
 day1
+TmHshtbl.cmo
+TmHshtbl.cmi

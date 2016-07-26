@@ -6,5 +6,9 @@ typecheck:
 	ocamlc -c parser.mli
 	ocamlc -c lexer.ml
 	ocamlc -c parser.ml
-	rlwrap ocaml syntax.cmo lexer.cmo parser.cmo
+	ocamlc -c TmHshtbl.mli
+	ocamlc -c TmHshtbl.ml
+	ocamlc -c typecheck.mli
+	ocamlc -c typecheck.ml
+	rlwrap ocaml syntax.cmo lexer.cmo parser.cmo TmHshtbl.cmo typecheck.cmo
 
