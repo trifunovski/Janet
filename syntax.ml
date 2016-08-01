@@ -109,24 +109,24 @@ struct
   let out (tm : t) : view =
     match tm with
     | Lam ((x , tp) , tm) ->
-        let newx = TermVar.newT (TermVar.toString x) in
+        let newx = TermVar.newT (TermVar.toUserString x) in
           Lam ((newx,tp) , swapInTerm newx x tm)
     | Letten (t1 , v , t2) ->
-        let newv = TermVar.newT (TermVar.toString v) in
+        let newv = TermVar.newT (TermVar.toUserString v) in
           Letten (t1 , newv , swapInTerm newv v t2)
     | Letapp (t1 , v , t2) ->
-        let newv = TermVar.newT (TermVar.toString v) in
+        let newv = TermVar.newT (TermVar.toUserString v) in
           Letapp (t1 , newv , swapInTerm newv v t2)
     | Letfst (t1 , v , t2) ->
-        let newv = TermVar.newT (TermVar.toString v) in
+        let newv = TermVar.newT (TermVar.toUserString v) in
           Letfst (t1 , newv , swapInTerm newv v t2)
     | Letsnd (t1 , v , t2) ->
-        let newv = TermVar.newT (TermVar.toString v) in
+        let newv = TermVar.newT (TermVar.toUserString v) in
           Letsnd (t1 , newv , swapInTerm newv v t2)
     | Case (z , (x , t1) , (y , t2)) ->
-        let newz = TermVar.newT (TermVar.toString z) in
-        let newx = TermVar.newT (TermVar.toString x) in
-        let newy = TermVar.newT (TermVar.toString y) in
+        let newz = TermVar.newT (TermVar.toUserString z) in
+        let newx = TermVar.newT (TermVar.toUserString x) in
+        let newy = TermVar.newT (TermVar.toUserString y) in
           Case (newz , (newx , swapInTerm newx x t1) , (newy , swapInTerm newy y t2))
     | _ -> tm
 
@@ -137,14 +137,14 @@ struct
       | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
       | TenPair (t1 , t2) -> "(" ^ toString t1 ^ " × " ^ toString t2 ^ ")"
       | WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
-      | Letten (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
-      | Letapp (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
-      | Letfst (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
-      | Letsnd (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toString v ^ " in " ^ toString t2
+      | Letten (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
+      | Letapp (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
+      | Letfst (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
+      | Letsnd (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
       | Inl t' -> "inl(" ^ toString t' ^ ")"
       | Inr t' -> "inr(" ^ toString t' ^ ")"
-      | Case (z , (x , u) , (y , v)) -> "case " ^ TermVar.toString z ^ " of inl(" ^ TermVar.toString x ^")" ^
-          " => " ^ toString u ^ " , " ^ "inr(" ^ TermVar.toString y ^ ") => " ^ toString v
+      | Case (z , (x , u) , (y , v)) -> "case " ^ TermVar.toUserString z ^ " of inl(" ^ TermVar.toUserString x ^")" ^
+          " => " ^ toString u ^ " , " ^ "inr(" ^ TermVar.toUserString y ^ ") => " ^ toString v
       | Star -> "*"
 
   let rec aequiv (tm1 : t) (tm2 : t) : bool =
