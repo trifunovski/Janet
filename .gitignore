@@ -20,3 +20,5 @@ lexer.cmi
 day1
 TmHshtbl.cmo
 TmHshtbl.cmi
+parseterm.cmo
+parseterm.cmi

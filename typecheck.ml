@@ -1,6 +1,7 @@
 open Syntax
 open Parser
 open TmHshtbl
+open Parseterm
 
 type context = Typ.t TmHshtbl.t
 
@@ -34,19 +35,19 @@ let printCtx ctx = TmHshtbl.iter (printCtxTerm) ctx
 
 let rec fixTerm links tm =
   match tm with
-  | Term.PVar x -> (match find links x with
+  | Parseterm.PVar x -> (match find links x with
                 | Some tmvar -> Term.into (Term.Var tmvar)
                 | None ->
                   let tmvar = TermVar.newT x in
                     Term.into (Term.Var tmvar))
-  | Term.PLam ((x , tp) , pr) ->
+  | Parseterm.PLam ((x , tp) , pr) ->
       (match find links x with
         | Some tmvar -> Term.into (Term.Lam ((tmvar, tp) , fixTerm links pr))
         | None ->
           let tmvar = TermVar.newT x in
           let () = addHT links x tmvar in
             Term.into (Term.Lam ((tmvar, tp) , fixTerm links pr)))
-  | Term.PLetten (pr1 , x , pr2) ->
+  | Parseterm.PLetten (pr1 , x , pr2) ->
     (match find links x with
       | Some tmvar -> Term.into (Term.Letten (fixTerm links pr1 , tmvar , fixTerm links pr2))
       | None ->
@@ -55,7 +56,7 @@ let rec fixTerm links tm =
         let () = addHT links x tmvar in
           Term.into (Term.Letten (tm1 , tmvar , fixTerm links pr2))
     )
-  | Term.PLetapp (pr1 , x , pr2) ->
+  | Parseterm.PLetapp (pr1 , x , pr2) ->
     (match find links x with
       | Some tmvar -> Term.into (Term.Letapp (fixTerm links pr1 , tmvar , fixTerm links pr2))
       | None ->
@@ -64,7 +65,7 @@ let rec fixTerm links tm =
         let () = addHT links x tmvar in
           Term.into (Term.Letapp (tm1 , tmvar , fixTerm links pr2))
     )
-  | Term.PLetfst (pr1 , x , pr2) ->
+  | Parseterm.PLetfst (pr1 , x , pr2) ->
     (match find links x with
       | Some tmvar -> Term.into (Term.Letfst (fixTerm links pr1 , tmvar , fixTerm links pr2))
       | None ->
@@ -73,7 +74,7 @@ let rec fixTerm links tm =
         let () = addHT links x tmvar in
           Term.into (Term.Letfst (tm1 , tmvar , fixTerm links pr2))
     )
-  | Term.PLetsnd (pr1 , x , pr2) ->
+  | Parseterm.PLetsnd (pr1 , x , pr2) ->
     (match find links x with
       | Some tmvar -> Term.into (Term.Letsnd (fixTerm links pr1 , tmvar , fixTerm links pr2))
       | None ->
@@ -82,7 +83,7 @@ let rec fixTerm links tm =
         let () = addHT links x tmvar in
           Term.into (Term.Letsnd (tm1 , tmvar , fixTerm links pr2))
     )
-  | Term.PCase (z , (x , u) , (y , t)) ->
+  | Parseterm.PCase (z , (x , u) , (y , t)) ->
     (match find links z with
       | Some tmvarZ ->
         (match find links x with
@@ -135,12 +136,12 @@ let rec fixTerm links tm =
                 )
         )
     )
-  | Term.PApp (pr1 , pr2) -> Term.into (Term.App (fixTerm links pr1 , fixTerm links pr2))
-  | Term.PTenPair (pr1 , pr2) -> Term.into (Term.TenPair (fixTerm links pr1 , fixTerm links pr2))
-  | Term.PWithPair (pr1 , pr2) -> Term.into (Term.WithPair (fixTerm links pr1 , fixTerm links pr2))
-  | Term.PInl (pr) -> Term.into (Term.Inl (fixTerm links pr))
-  | Term.PInr (pr) -> Term.into (Term.Inr (fixTerm links pr))
-  | Term.PStar -> Term.into (Term.Star)
+  | Parseterm.PApp (pr1 , pr2) -> Term.into (Term.App (fixTerm links pr1 , fixTerm links pr2))
+  | Parseterm.PTenPair (pr1 , pr2) -> Term.into (Term.TenPair (fixTerm links pr1 , fixTerm links pr2))
+  | Parseterm.PWithPair (pr1 , pr2) -> Term.into (Term.WithPair (fixTerm links pr1 , fixTerm links pr2))
+  | Parseterm.PInl (pr) -> Term.into (Term.Inl (fixTerm links pr))
+  | Parseterm.PInr (pr) -> Term.into (Term.Inr (fixTerm links pr))
+  | Parseterm.PStar -> Term.into (Term.Star)
 
 let rec typecheck ctx tm tp =
   match (Term.out tm , tp) with

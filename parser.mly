@@ -1,5 +1,6 @@
 %{
   open Syntax
+  open Parseterm
 %}
 
 %token <string> VAR PROP
@@ -7,7 +8,7 @@
 
 %start typEXP termEXP ctxtmEXP
 %type <Syntax.Typ.t> typEXP
-%type <Syntax.Term.pr> termEXP
+%type <Parseterm.pr> termEXP
 %type <string> var
 %type <(string * Syntax.TermVar.t * Syntax.Typ.t) list> ctxtmEXP
 
@@ -41,20 +42,20 @@ ctxtmEXP: ctxtm COMMA ctxtmEXP { $1 :: $3 }
 ;
 
 term:
-    | var { Term.PVar $1 }
-    | LPAREN term TENSOR term RPAREN { (Term.PTenPair ($2 , $4)) }
-    | LESS term COMMA term GREATER { (Term.PWithPair ($2 , $4)) }
+    | var { PVar $1 }
+    | LPAREN term TENSOR term RPAREN { (PTenPair ($2 , $4)) }
+    | LESS term COMMA term GREATER { (PWithPair ($2 , $4)) }
     | CASE var OF INL LPAREN var RPAREN ARROW term COMMA INR LPAREN var RPAREN ARROW term
-        { (Term.PCase ($2 , ($6 , $9) , ($13 , $16)))}
-    | LETTEN term BE var IN term { (Term.PLetten ($2 , $4 , $6)) }
-    | LETAPP term BE var IN term { (Term.PLetapp ($2 , $4 , $6)) }
-    | LETFST term BE var IN term { (Term.PLetfst ($2 , $4 , $6)) }
-    | LETSND term BE var IN term { (Term.PLetsnd ($2 , $4 , $6)) }
-    | LPAREN term term RPAREN { (Term.PApp ($2 , $3)) }
-    | STAR { (Term.PStar) }
-    | INL LPAREN term RPAREN { (Term.PInl ($3)) }
-    | INR LPAREN term RPAREN { (Term.PInr ($3)) }
-    | LAMBDA var COLON typ DOT term { (Term.PLam (($2 , $4) , $6))}
+        { (PCase ($2 , ($6 , $9) , ($13 , $16)))}
+    | LETTEN term BE var IN term { (PLetten ($2 , $4 , $6)) }
+    | LETAPP term BE var IN term { (PLetapp ($2 , $4 , $6)) }
+    | LETFST term BE var IN term { (PLetfst ($2 , $4 , $6)) }
+    | LETSND term BE var IN term { (PLetsnd ($2 , $4 , $6)) }
+    | LPAREN term term RPAREN { (PApp ($2 , $3)) }
+    | STAR { (PStar) }
+    | INL LPAREN term RPAREN { (PInl ($3)) }
+    | INR LPAREN term RPAREN { (PInr ($3)) }
+    | LAMBDA var COLON typ DOT term { (PLam (($2 , $4) , $6))}
 ;
 
 termEXP: term EOL { $1 }

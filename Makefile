@@ -1,6 +1,8 @@
 typecheck:
 	ocamlc -c syntax.mli
 	ocamlc -c syntax.ml
+	ocamlc -c parseterm.mli
+	ocamlc -c parseterm.ml
 	ocamllex lexer.mll
 	ocamlyacc parser.mly
 	ocamlc -c parser.mli
