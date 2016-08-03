@@ -5,12 +5,14 @@ open Parser
 
 exception TmTp of TermVar.t * Typ.t
 
+type delta = (Term.t , (context * Typ.t)) Hashtbl.t
+
 let holeCtr = ref 0
 
-type drv = Axiom of context * Term.t * Typ.t
-         | Node1 of (context * Term.t * Typ.t) * drv
-         | Node2 of (context * Term.t * Typ.t) * drv * drv
-         | Unprocessed of context * TermVar.t * Typ.t
+type drv = Axiom of delta * context * Term.t * Typ.t
+         | Node1 of (delta * context * Term.t * Typ.t) * drv
+         | Node2 of (delta * context * Term.t * Typ.t) * drv * drv
+         | Unprocessed of delta * context * Term.t * Typ.t
 
 let rec completed = function
   | Axiom (_) -> true
@@ -23,10 +25,10 @@ let ctxToString ctx =
     if String.length str > 0 then String.sub str 0 (String.length str - 2) else str
 
 let thisStep = function
-  | Unprocessed (ctx , tmvar , tp) -> (ctxToString ctx) ^ "⊢ " ^ TermVar.toUserString tmvar ^ " : " ^ (Typ.toString tp)
-  | Axiom (ctx , tm , tp) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
-  | Node1 ((ctx , tm , tp) , _) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
-  | Node2 ((ctx , tm , tp) , _ , _) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
+  | Unprocessed (_ , ctx , mv , tp) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString mv ^ (Typ.toString tp)
+  | Axiom (_ , ctx , tm , tp) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
+  | Node1 ((_ , ctx , tm , tp) , _) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
+  | Node2 ((_ , ctx , tm , tp) , _ , _) -> (ctxToString ctx) ^ "⊢ " ^ Term.toString tm ^ " : " ^ (Typ.toString tp)
 
 let rec atLevel n drv =
   match (n , drv) with
@@ -76,13 +78,13 @@ let chooseFromCtx ctx1 =
           | _ -> TmHshtbl.remove ctx1 tm; TmHshtbl.add ctx2 tm tp
         ) ctx1 ; (ctx1 , ctx2)
 
-let rec getHoleComponents holTermVar = function
-  | Unprocessed (ctx , h , tp) -> if TermVar.equal holTermVar h then Some (ctx , tp) else None
-  | Node1 ((_) , d) -> getHoleComponents holTermVar d
+let rec getHoleComponents holTerm = function
+  | Unprocessed (dt , ctx , h , tp) -> if Term.aequiv holTerm h then Some (dt , ctx , tp) else None
+  | Node1 ((_) , d) -> getHoleComponents holTerm d
   | Node2 ((_) , d1 , d2) ->
-    (match getHoleComponents holTermVar d1 with
-      | None -> getHoleComponents holTermVar d2
-      | Some (ctx , tp) -> Some (ctx , tp))
+    (match getHoleComponents holTerm d1 with
+      | None -> getHoleComponents holTerm d2
+      | Some (dt , ctx , tp) -> Some (dt , ctx , tp))
   | _ -> None
 
 
@@ -104,25 +106,25 @@ let rec replaceInTerm oldTermVar newTerm tm =
   | Term.Star -> tm
 
 let rec replaceHole oldTermVar newTerm newDrv = function
-  | Unprocessed (ctx , h , tp) ->
+  | Unprocessed (_ , ctx , h , tp) ->
       if TermVar.equal h oldTermVar
       then newDrv
       else Unprocessed (ctx , h , tp)
-  | Node1 ((ctx , tm , tp) , d) ->
-      Node1 ((ctx , replaceInTerm oldTermVar newTerm tm, tp) ,
+  | Node1 ((dt , ctx , tm , tp) , d) ->
+      Node1 ((dt , ctx , replaceInTerm oldTermVar newTerm tm, tp) ,
                   replaceHole oldTermVar newTerm newDrv d)
-  | Node2 ((ctx , tm , tp) , d1 , d2) ->
-      Node2 ((ctx , replaceInTerm oldTermVar newTerm tm , tp) ,
+  | Node2 ((dt , ctx , tm , tp) , d1 , d2) ->
+      Node2 ((dt , ctx , replaceInTerm oldTermVar newTerm tm , tp) ,
         replaceHole oldTermVar newTerm newDrv d1,
         replaceHole oldTermVar newTerm newDrv d2)
-  | Axiom (ctx , tm , tp) -> Axiom (ctx , tm , tp)
+  | Axiom (dt , ctx , tm , tp) -> Axiom (dt , ctx , tm , tp)
 
 
 let getBottom = function
-  | Unprocessed (ctx , tmvar , tp) -> (ctx , Term.into (Term.Var tmvar) , tp)
-  | Axiom (ctx , tm , tp) -> (ctx , tm , tp)
-  | Node1 ((ctx , tm , tp) , _ ) -> (ctx , tm , tp)
-  | Node2 ((ctx , tm , tp) , _ , _) -> (ctx , tm , tp)
+  | Unprocessed (_ , ctx , mv , tp) -> (ctx , mv , tp)
+  | Axiom (_ , ctx , tm , tp) -> (ctx , tm , tp)
+  | Node1 ((_ , ctx , tm , tp) , _ ) -> (ctx , tm , tp)
+  | Node2 ((_ , ctx , tm , tp) , _ , _) -> (ctx , tm , tp)
 
 let possibleRules ctx tp =
   let idtp = ref 0 in
@@ -153,12 +155,12 @@ let rec holes drv holeTerms =
   match Hashtbl.mem holeTerms holnum with
   | false -> print_endline "You entered a non-existent hole number. Try again."; holes drv holeTerms
   | true ->
-    let holTerm : TermVar.t = Hashtbl.find holeTerms holnum in
+    let holTerm = Hashtbl.find holeTerms holnum in
     let res = getHoleComponents holTerm drv in
     (match res with
       | None -> print_endline "You entered a non-existent hole number. Try again."; holes drv holeTerms
-      | Some (ctx , tp) ->
-    let () = print_endline (thisStep (Unprocessed (ctx , holTerm , tp))) in
+      | Some (dt , ctx , tp) ->
+    let () = print_endline (thisStep (Unprocessed (dt , ctx , holTerm , tp))) in
     let () = print_endline "Possible rules to apply:" in
     let () = printList (possibleRules ctx tp) in
     let () = print_endline "Enter a name of a rule, or type back to go back:" in
@@ -305,7 +307,7 @@ and proofAssistant drv holeTerms =
   let () = printDrv drv in
   let (ctx , tm , tp) = getBottom drv in
   match (completed drv , typechecker ctx tm tp) with
-  | (true , true) -> holeCtr := 0 ; print_endline "The proof is complete."
+  | (true , true) -> print_endline "The proof is complete."
   | (true , false) -> failwith "Construction failure."
   | (false , _) -> holes drv holeTerms
 
@@ -317,15 +319,24 @@ let rec get_context ctx links =
   let _ = List.map (fun (s , x , a) -> TmHshtbl.add ctx x a; Hashtbl.add links s x; (s , x , a)) ctxlist  in
       (ctx , links)
 
+let makeIdSub ctx =
+  let id = Hashtbl.make 256 in
+    TmHshtbl.iter (fun k v -> Hashtbl.add id k (Term.into (Term.Var k))) ctx ; id
+
 let main2 (_ : unit) =
+  let () = holeCtr := 0 in
   let (ctx , links) = get_context (TmHshtbl.create 256) (Hashtbl.create 256) in
   let () = print_endline "Enter the intended type of the term:" in
   let strtp = input_line stdin in
   let tpbuf = Lexing.from_string strtp in
   let tp = Parser.typEXP Lexer.exp_token tpbuf in
   let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
-  let hole1termvar = TermVar.newT ("{ ?" ^ (string_of_int hole1) ^" }") in
-  let tree = Unprocessed (ctx , hole1termvar , tp) in
+  let hole1MV = TermVar.newT (string_of_int hole1) in
+  let hole1ctx = makeIdSub ctx in
+  let hole1TM = Term.into (MV (hole1MV , hole1sub)) in
+  let dt = Hashtbl.create 256 in
+  let () = Hashtbl.add dt hole1TM (hole1ctx , tp) in
+  let tree = Unprocessed (dt , ctx , hole1TM , tp) in
   let holeHT = Hashtbl.create 256 in
-  let () = Hashtbl.add holeHT hole1 hole1termvar in
+  let () = Hashtbl.add holeHT hole1 hole1TM in
     proofAssistant tree holeHT

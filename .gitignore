@@ -18,7 +18,7 @@ lexer.cmo
 lexer.cmi
 .DS_Store
 day1
-TmHshtbl.cmo
-TmHshtbl.cmi
 parseterm.cmo
 parseterm.cmi
+llpa1.cmo
+llpa1.cmi

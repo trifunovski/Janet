@@ -1,6 +1,5 @@
 open Syntax
 open Parser
-open TmHshtbl
 open Parseterm
 
 type context = Typ.t TmHshtbl.t

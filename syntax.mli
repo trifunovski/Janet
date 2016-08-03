@@ -33,12 +33,35 @@ module Typ : sig
   val toString : t -> string
 end
 
+module TmHshtbl :
+sig
+  type key = TermVar.t
+  type 'a t = 'a Hashtbl.Make(TermVar).t
+  val create : int -> 'a t
+  val clear : 'a t -> unit
+  val reset : 'a t -> unit
+  val copy : 'a t -> 'a t
+  val add : 'a t -> key -> 'a -> unit
+  val remove : 'a t -> key -> unit
+  val find : 'a t -> key -> 'a
+  val find_all : 'a t -> key -> 'a list
+  val replace : 'a t -> key -> 'a -> unit
+  val mem : 'a t -> key -> bool
+  val iter : (key -> 'a -> unit) -> 'a t -> unit
+  val fold : (key -> 'a -> 'b -> 'b) -> 'a t -> 'b -> 'b
+  val length : 'a t -> int
+  val stats : 'a t -> Hashtbl.statistics
+end
+
 module Term : sig
   type termVar = TermVar.t
+  type metaVar = TermVar.t
+  type 'a sub = 'a TmHshtbl.t
   type t
 
   type view =
             | Var of termVar
+            | MV of metaVar * t sub
             | Lam of (termVar * Typ.t) * t
             | App of t * t
             | TenPair of t * t
@@ -56,5 +79,4 @@ module Term : sig
   val out : t -> view
   val aequiv : t -> t -> bool
   val toString : t -> string
-
 end

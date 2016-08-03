@@ -48,12 +48,17 @@ struct
 
 end
 
+module TmHshtbl = Hashtbl.Make(TermVar)
+
 module Term =
 struct
   type termVar = TermVar.t
+  type metaVar = TermVar.t
+  type 'a sub = 'a TmHshtbl.t
 
   type view =
             | Var of termVar
+            | MV of metaVar * t sub
             | Lam of (termVar * Typ.t) * t
             | App of t * t
             | TenPair of t * t
@@ -70,14 +75,24 @@ struct
 
   let into (v : view) : t = v
 
-  let swapVar newV oldV curV =
+  let rec swapInSub sub newV oldV =
+  let newSub = TmHshtbl.copy sub in
+    TmHshtbl.iter
+      (fun k v ->
+          (match out v with
+          | Var x when TermVar.equal x oldV -> TmHshtbl.add newSub k (into (Var newV))
+          | _ -> TmHshtbl.add newSub k v)) sub ; newSub
+
+
+  and swapVar newV oldV curV =
     if TermVar.equal oldV curV then newV else curV
 
-  let rec swapInTerm newV oldV t =
+  and swapInTerm newV oldV t =
   let st = swapInTerm newV oldV in
   let sv = swapVar newV oldV in
     match t with
     | Var z -> Var (sv z)
+    | MV (u , sub) -> MV (u , swapInSub sub newV oldV)
     | App (t1 , t2) -> App (st t1, st t2)
     | Lam ((x , tp) , tm) -> Lam (((sv x) , tp) , st tm)
     | TenPair (t1 , t2) -> TenPair (st t1 , st t2)
@@ -91,7 +106,7 @@ struct
     | Case (z , (x , t1) , (y , t2)) -> Case (sv z , (sv x , st t1) , (sv y , st t2))
     | _ -> t
 
-  let out (tm : t) : view =
+  and out (tm : t) : view =
     match tm with
     | Lam ((x , tp) , tm) ->
         let newx = TermVar.newT (TermVar.toUserString x) in
@@ -118,6 +133,7 @@ struct
   let rec toString (tm : t) : string =
     match tm with
       | Var x -> TermVar.toUserString x
+      | MV (x , _) -> "{ ?" ^ TermVar.toUserString x ^ " }"
       | Lam ((x , t) , tm) -> "λ" ^ TermVar.toUserString x ^" : "^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
       | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
       | TenPair (t1 , t2) -> "(" ^ toString t1 ^ " × " ^ toString t2 ^ ")"
@@ -136,6 +152,7 @@ struct
     match (tm1 , tm2) with
       | (Star , Star) -> true
       | (Var x , Var y) -> TermVar.equal x y
+      | (MV (x , _) , MV (y , _)) -> TermVar.equal x y
       | (Inl t , Inl t') -> aequiv t t'
       | (Inr t , Inr t') -> aequiv t t'
       | (App (t1 , t2) , App (t1' , t2')) -> aequiv t1 t1' && aequiv t2 t2'
