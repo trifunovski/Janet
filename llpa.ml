@@ -1,7 +1,8 @@
-open Typecheck
+open Termvar
+open Tmhshtbl
 open Syntax
-open TmHshtbl
 open Parser
+open Typecheck
 
 exception TmTp of TermVar.t * Typ.t
 
