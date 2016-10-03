@@ -1,7 +1,8 @@
-open Typecheck
-open Syntax
+open Termvar
 open Tmhshtbl
 open Parser
+open Syntax
+open Typecheck
 
 type rule =
   Id | Rtensor | Rplus1 | Rplus2 | Rwith | Rone | Rlolli
