@@ -1,4 +1,8 @@
 typecheck:
+	ocamlc -c termvar.mli
+	ocamlc -c termvar.ml
+	ocamlc -c tmhshtbl.mli
+	ocamlc -c tmhshtbl.ml
 	ocamlc -c syntax.mli
 	ocamlc -c syntax.ml
 	ocamlc -c parseterm.mli
@@ -10,5 +14,5 @@ typecheck:
 	ocamlc -c parser.ml
 	ocamlc -c typecheck.mli
 	ocamlc -c typecheck.ml
-	rlwrap ocaml syntax.cmo lexer.cmo parser.cmo typecheck.cmo
+	rlwrap ocaml termvar.cmo tmhshtbl.cmo syntax.cmo lexer.cmo parser.cmo typecheck.cmo
 

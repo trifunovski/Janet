@@ -1,21 +1,17 @@
 open Typecheck
 open Syntax
-open TmHshtbl
+open Tmhshtbl
 open Parser
 
 type rule =
-  Id | Rtensor | Rplus1 | Rplus2 | Rwith | Rone | Rlolli | Ltensor | Lwith1 | Lwith2 | Lplus | Lone
+  Id | Rtensor | Rplus1 | Rplus2 | Rwith | Rone | Rlolli
+     | Llolli of TermVar.t | Ltensor of TermVar.t | Lwith1 of TermVar.t | Lwith2 of TermVar.t | Lplus of TermVar.t | Lone of TermVar.t
 
 type delta = (Term.t , (context * Typ.t)) Hashtbl.t
 
-type step = delta * context * Term.t * Typ.t
+type seq = context * Term.t * Typ.t
 
-type drv = Axiom of step
-         | Node1 of step * drv
-         | Node2 of step * drv * drv
-         | Unprocessed of step
-
-type hole = Term.t
+type drv = Node of seq * drv list
 
 val printDrv : drv -> unit
 
@@ -25,8 +21,6 @@ val getType : unit -> Typ.t
 
 val startDrv : context -> Typ.t -> drv
 
-val subIntoHole : hole -> Term.t -> Term.t
-
-val refineHole : drv -> hole -> rule -> drv
+val refineHole : drv -> Term.t -> rule -> drv
 
 val completed : drv -> bool

@@ -1,3 +1,5 @@
+open Termvar
+open Tmhshtbl
 open Syntax
 open Parser
 open Parseterm

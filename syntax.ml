@@ -1,22 +1,5 @@
-module TermVar =
-struct
-  type t = string * int
-
-  let counter = ref 0
-
-  let hash (_ , id) = id
-
-  let newT s = (s, (counter := !counter + 1; !counter))
-
-  let equal (_, id1) (_, id2) = (id1 = id2)
-
-  let compare (_, id1) (_, id2) = Pervasives.compare id1 id2
-
-  let toString (s, id) = s ^ "@" ^ (string_of_int id)
-
-  let toUserString (s, id) = s
-
-end
+open Termvar
+open Tmhshtbl
 
 module Typ =
 struct
@@ -48,8 +31,6 @@ struct
 
 end
 
-module TmHshtbl = Hashtbl.Make(TermVar)
-
 module Term =
 struct
   type termVar = TermVar.t
@@ -75,18 +56,16 @@ struct
 
   let into (v : view) : t = v
 
-  let rec swapInSub sub newV oldV =
-  let newSub = TmHshtbl.copy sub in
+  let rec swapInSub sub z x =
     TmHshtbl.iter
-      (fun k v ->
-          (match out v with
-          | Var x when TermVar.equal x oldV -> TmHshtbl.add newSub k (into (Var newV))
-          | _ -> TmHshtbl.add newSub k v)) sub ; newSub
-
+      (fun y t -> if TermVar.equal z y then () else
+           TmHshtbl.replace sub y (swapInTerm z x t)) sub ; sub
 
   and swapVar newV oldV curV =
     if TermVar.equal oldV curV then newV else curV
 
+  (* The newV is always a fresh variable when this function is called
+   *)
   and swapInTerm newV oldV t =
   let st = swapInTerm newV oldV in
   let sv = swapVar newV oldV in
@@ -94,16 +73,23 @@ struct
     | Var z -> Var (sv z)
     | MV (u , sub) -> MV (u , swapInSub sub newV oldV)
     | App (t1 , t2) -> App (st t1, st t2)
-    | Lam ((x , tp) , tm) -> Lam (((sv x) , tp) , st tm)
+    | Lam ((x , tp) , tm) when not (TermVar.equal oldV x) -> Lam ((x , tp) , st tm)
     | TenPair (t1 , t2) -> TenPair (st t1 , st t2)
     | WithPair (t1 , t2) -> WithPair (st t1 , st t2)
-    | Letten (t1 , v , t2) -> Letten (st t1 , sv v , st t2)
-    | Letapp (t1 , v , t2) -> Letapp (st t1 , sv v , st t2)
-    | Letfst (t1 , v , t2) -> Letfst (st t1 , sv v , st t2)
-    | Letsnd (t1 , v , t2) -> Letsnd (st t1 , sv v , st t2)
+    | Letten (t1 , v , t2) when not (TermVar.equal oldV v) -> Letten (st t1 , v , st t2)
+    | Letten (t1 , v , t2) -> Letten (st t1 , v , t2)
+    | Letapp (t1 , v , t2) when not (TermVar.equal oldV v) -> Letapp (st t1 , v , st t2)
+    | Letapp (t1 , v , t2) -> Letapp (st t1 , v , t2)
+    | Letfst (t1 , v , t2) when not (TermVar.equal oldV v) -> Letfst (st t1 , v , st t2)
+    | Letfst (t1 , v , t2) -> Letfst (st t1 , v , t2)
+    | Letsnd (t1 , v , t2) when not (TermVar.equal oldV v) -> Letsnd (st t1 , v , st t2)
+    | Letsnd (t1 , v , t2) -> Letsnd (st t1 , v , t2)
     | Inl tm -> Inl (swapInTerm newV oldV tm)
     | Inr tm -> Inr (swapInTerm newV oldV tm)
-    | Case (z , (x , t1) , (y , t2)) -> Case (sv z , (sv x , st t1) , (sv y , st t2))
+    | Case (z , (x , t1) , (y , t2)) ->
+        let t1' = if not (TermVar.equal oldV x) then st t1 else t1 in
+        let t2' = if not (TermVar.equal oldV y) then st t2 else t2 in
+          Case (z , (x , t1') , (y , t2'))
     | _ -> t
 
   and out (tm : t) : view =
@@ -159,11 +145,92 @@ struct
       | (TenPair (t1 , t2) , TenPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
       | (WithPair (t1 , t2) , WithPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
       | (Lam ((x , t) , tm) , Lam ((y , t') , tm')) -> aequiv tm (swapInTerm x y tm')
-      | (Letten (t1 , v , t3) , Letten (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
-      | (Letapp (t1 , v , t3) , Letapp (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
-      | (Letfst (t1 , v , t3) , Letfst (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
-      | (Letsnd (t1 , v , t3) , Letsnd (t1' , v' , t3')) -> aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letten (t1 , v , t3) , Letten (t1' , v' , t3')) ->
+          aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letapp (t1 , v , t3) , Letapp (t1' , v' , t3')) ->
+          aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letfst (t1 , v , t3) , Letfst (t1' , v' , t3')) ->
+          aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letsnd (t1 , v , t3) , Letsnd (t1' , v' , t3')) ->
+          aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
       | (Case (z , (x , t1) , (y , t2)) , Case (z' , (x' , t1') , (y' , t2')) )
           -> aequiv t1 (swapInTerm x x' t1') && aequiv t2 (swapInTerm y y' t2')
       | _ -> false
+
+
+  let applySubToVar sub v =
+    match TmHshtbl.mem sub v with
+    | false -> into (Var v)
+    | true -> TmHshtbl.find sub v
+
+  let rec applySubToSub sub sub' =
+      TmHshtbl.iter (fun y t ->
+                      TmHshtbl.replace sub' y (applySub sub t)) sub'; sub'
+  and applySub sub tm =
+    match out tm with
+        | MV (u , sub') -> into (MV (u , applySubToSub sub sub'))
+        | Var z -> (applySubToVar sub z)
+        | Case (z , (x , t1) , (y , t2)) ->
+          let t1' = if TmHshtbl.mem sub x
+                    then let sub1 = TmHshtbl.copy sub in
+                         let () = TmHshtbl.remove sub1 x in
+                            applySub sub1 t1
+                    else applySub sub t1 in
+          let t2' = if TmHshtbl.mem sub y
+                    then let sub2 = TmHshtbl.copy sub in
+                         let () = TmHshtbl.remove sub2 y in
+                            applySub sub2 t2
+                    else applySub sub t2 in
+                    into (Case (z, (x , t1') , (y , t2')))
+        | Lam ((x , tp) , tm) ->
+          let tm' = if TmHshtbl.mem sub x
+                    then let sub' = TmHshtbl.copy sub in
+                         let () = TmHshtbl.remove sub' x in
+                            applySub sub' tm
+                    else applySub sub tm in
+                    into (Lam ((x , tp) , tm'))
+        | Letten (t1 , v , t2) ->
+            let t1' = applySub sub t1 in
+            let t2' = if TmHshtbl.mem sub v
+                      then let sub' = TmHshtbl.copy sub in
+                           let () = TmHshtbl.remove sub' v in
+                              applySub sub' t2
+                      else applySub sub t2 in
+                      into (Letten (t1', v , t2'))
+
+        | Letapp (t1 , v , t2) ->
+            let t1' = applySub sub t1 in
+            let t2' = if TmHshtbl.mem sub v
+                      then let sub' = TmHshtbl.copy sub in
+                           let () = TmHshtbl.remove sub' v in
+                              applySub sub' t2
+                      else applySub sub t2 in
+                      into (Letapp (t1', v , t2'))
+
+        | Letfst (t1 , v , t2) ->
+            let t1' = applySub sub t1 in
+            let t2' = if TmHshtbl.mem sub v
+                      then let sub' = TmHshtbl.copy sub in
+                           let () = TmHshtbl.remove sub' v in
+                              applySub sub' t2
+                      else applySub sub t2 in
+                      into (Letfst (t1', v , t2'))
+
+        | Letsnd (t1 , v , t2) ->
+            let t1' = applySub sub t1 in
+            let t2' = if TmHshtbl.mem sub v
+                      then let sub' = TmHshtbl.copy sub in
+                           let () = TmHshtbl.remove sub' v in
+                              applySub sub' t2
+                      else applySub sub t2 in
+                      into (Letsnd (t1', v , t2'))
+
+        | App (t1 , t2) -> into (App (applySub sub t1, applySub sub t2))
+        | TenPair (t1 , t2) -> into (TenPair (applySub sub t1 , applySub sub t2))
+        | WithPair (t1 , t2) -> into (WithPair (applySub sub t1 , applySub sub t2))
+        | Inl tm -> into (Inl (applySub sub tm))
+        | Inr tm -> into (Inr (applySub sub tm))
+        | _ -> tm
+
+
 end

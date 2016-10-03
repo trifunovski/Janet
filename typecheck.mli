@@ -1,3 +1,4 @@
+open Tmhshtbl
 open Syntax
 
 type context = Typ.t TmHshtbl.t

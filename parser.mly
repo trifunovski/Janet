@@ -1,4 +1,5 @@
 %{
+  open Termvar
   open Syntax
   open Parseterm
 %}
@@ -10,7 +11,7 @@
 %type <Syntax.Typ.t> typEXP
 %type <Parseterm.pr> termEXP
 %type <string> var
-%type <(string * Syntax.TermVar.t * Syntax.Typ.t) list> ctxtmEXP
+%type <(string * Termvar.TermVar.t * Syntax.Typ.t) list> ctxtmEXP
 
 %%
 
