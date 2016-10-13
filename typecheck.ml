@@ -6,7 +6,7 @@ open Parseterm
 
 type context = Typ.t TmHshtbl.t
 
-type delta = (Term.t , (context * Typ.t)) Hashtbl.t
+type delta = (Term.metaVar , (context * Typ.t)) Hashtbl.t
 
 let lookup ctx v = try
   (Some (TmHshtbl.find ctx v))
@@ -152,7 +152,7 @@ let typechecker dlt ctx tm tp =
   let rec typecheck ctx tm tp =
     match (Term.out tm , tp) with
     (* Right Rules *)
-    | (Term.MV (mv , sub) , tp) when (Hashtbl.mem dlt tm && Typ.aequiv tp (snd (Hashtbl.find dlt tm))) -> Some ctx
+    | (Term.MV (mv , sub) , tp) when (Hashtbl.mem dlt mv && Typ.aequiv tp (snd (Hashtbl.find dlt mv))) -> Some ctx
     | (Term.Var x , tp) ->
         (match lookup ctx x with
           | Some tp' when Typ.aequiv tp tp' ->

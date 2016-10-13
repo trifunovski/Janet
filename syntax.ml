@@ -1,4 +1,5 @@
 open Termvar
+open Metavar
 open Tmhshtbl
 
 module Typ =
@@ -34,7 +35,7 @@ end
 module Term =
 struct
   type termVar = TermVar.t
-  type metaVar = TermVar.t
+  type metaVar = MetaVar.t
   type 'a sub = 'a TmHshtbl.t
 
   type view =
@@ -119,7 +120,7 @@ struct
   let rec toString (tm : t) : string =
     match tm with
       | Var x -> TermVar.toUserString x
-      | MV (x , _) -> "{ ?" ^ TermVar.toUserString x ^ " }"
+      | MV (x , _) -> "{ ?" ^ MetaVar.toUserString x ^ " }"
       | Lam ((x , t) , tm) -> "λ" ^ TermVar.toUserString x ^" : "^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
       | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
       | TenPair (t1 , t2) -> "(" ^ toString t1 ^ " × " ^ toString t2 ^ ")"
@@ -138,7 +139,7 @@ struct
     match (tm1 , tm2) with
       | (Star , Star) -> true
       | (Var x , Var y) -> TermVar.equal x y
-      | (MV (x , _) , MV (y , _)) -> TermVar.equal x y
+      | (MV (x , _) , MV (y , _)) -> MetaVar.equal x y
       | (Inl t , Inl t') -> aequiv t t'
       | (Inr t , Inr t') -> aequiv t t'
       | (App (t1 , t2) , App (t1' , t2')) -> aequiv t1 t1' && aequiv t2 t2'

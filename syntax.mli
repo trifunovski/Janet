@@ -1,4 +1,5 @@
 open Termvar
+open Metavar
 open Tmhshtbl
 
 module Typ : sig
@@ -17,7 +18,7 @@ end
 
 module Term : sig
   type termVar = TermVar.t
-  type metaVar = TermVar.t
+  type metaVar = MetaVar.t
   type 'a sub = 'a TmHshtbl.t
   type t
 

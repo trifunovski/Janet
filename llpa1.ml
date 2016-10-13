@@ -1,20 +1,29 @@
 open Termvar
+open Metavar
 open Tmhshtbl
 open Syntax
 open Parser
 open Typecheck
 
 type rule =
-  Id | Rtensor | Rplus1 | Rplus2 | Rwith | Rone | Rlolli
-     | Llolli of TermVar.t | Ltensor of TermVar.t | Lwith1 of TermVar.t | Lwith2 of TermVar.t | Lplus of TermVar.t | Lone of TermVar.t
+     | Id of TermVar.t | Rtensor | Rplus1 | Rplus2 | Rwith | Rone | Rlolli
+     | Llolli of TermVar.t | Ltensor of TermVar.t | Lwith1 of TermVar.t
+     | Lwith2 of TermVar.t | Lplus of TermVar.t | Lone of TermVar.t
 
 type seq = context * Term.t * Typ.t
 
 type drv = Node of seq * drv list
 
+let rec applyToDrv f = function
+  | Node ((ctx , tm , tp) , dl) -> Node ((f (ctx , tm , tp)) , List.map (applyToDrv f) dl)
+
 type hole = Term.t
 
 let holeCtr = ref 0
+
+let makeIdSub ctx =
+  let id = TmHshtbl.create 256 in
+    TmHshtbl.iter (fun k v -> TmHshtbl.add id k (Term.into (Term.Var k))) ctx ; id
 
 let ctxToString ctx =
   let str = TmHshtbl.fold (fun tm tp s -> (TermVar.toUserString tm) ^ " : " ^ (Typ.toString tp) ^" , "^ s ) ctx "" in
@@ -28,7 +37,6 @@ let rec atLevel n drv =
   | (1 , drv) -> [thisStep drv]
   | (n , drv) when n < 1 -> []
   | (_ , Node ((_) , dl)) -> List.fold_left (@) [] (List.map (atLevel (n - 1)) dl)
-  | _ -> []
 
 let rec depth = function
   | Node ((_) , []) -> 1
@@ -72,14 +80,76 @@ let getType () =
     Parser.typEXP Lexer.exp_token tpbuf
 
 
+let rec recurInTerm t mv newTerm =
+  let ri = fun t' -> recurInTerm t' mv newTerm in
+  match Term.out t with
+  | Term.MV (u , sub) when MetaVar.equal u mv -> Term.applySub sub newTerm
+  | Term.Lam ((x , tp) , t') -> Term.into (Term.Lam ((x , tp) , ri t'))
+  | Term.App (t1 , t2) -> Term.into (Term.App (ri t1 , ri t2))
+  | Term.TenPair (t1 , t2) -> Term.into (Term.TenPair (ri t1, ri t2))
+  | Term.WithPair (t1 , t2) -> Term.into (Term.WithPair (ri t1, ri t2))
+  | Term.Letten (t1 , v , t2) -> Term.into (Term.Letten (ri t1, v , ri t2))
+  | Term.Letapp (t1 , v , t2) -> Term.into (Term.Letapp (ri t1, v , ri t2))
+  | Term.Letfst (t1 , v , t2) -> Term.into (Term.Letfst (ri t1, v , ri t2))
+  | Term.Letsnd (t1 , v , t2) -> Term.into (Term.Letsnd (ri t1, v , ri t2))
+  | Term.Inl t' -> Term.into (Term.Inl (ri t'))
+  | Term.Inr t' -> Term.into (Term.Inr (ri t'))
+  | Term.Case (z , (x , t1 ) , (y , t2)) -> Term.into (Term.Case (z , (x , ri t1) , (y , ri t2)))
+  | _ -> t
+
+let rec refineHole (drv : drv) (mv : Term.metaVar) (rule : rule) (dlt : Typecheck.delta) :
+      (drv * ((Term.t -> Term.t) * delta) option) =
+  match drv with
+  | Node ((ctx , tm , tp) , []) ->
+      (match Term.out tm with
+        | Term.MV (mv' , sub) when MetaVar.equal mv mv' ->
+            let (mvCtx , mvTp) = Hashtbl.find dlt mv in
+            (match (rule , mvTp) with
+              | (Id (tvar) , mvTp) when Typ.aequiv mvTp (TmHshtbl.find mvCtx tvar) ->
+                  let newTerm = (Term.into (Term.Var tvar)) in
+                  (Node ((ctx , Term.applySub sub newTerm, tp) , []) , Some ((fun t -> recurInTerm t mv newTerm) , dlt))
+              | (Rplus1 , Typ.Or (a , b)) ->
+                  let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
+                  let newMV = MetaVar.newT (string_of_int hole1) in
+                  let mvTerm = Term.into (Term.MV (newMV , makeIdSub mvCtx)) in
+                  let newTerm = (Term.into (Term.Inl (applySub sub mvTerm))) in
+                  let () = Hashtbl.add dlt newMV (mvCtx , a) in
+                  (Node ((ctx , Term.applySub sub newTerm, Typ.Or (a , b)),
+                      [Node ((ctx , mvTerm , a) , [])]) , Some ((fun t -> recurInTerm t mv newTerm) , dlt))
+          (*
+              | (Rtensor , Typ.Tensor (a , b)) ->
+
+              | (Rplus2 , Typ.Or (a , b)) ->
+              | (Rwith , Typ.With (a , b)) ->
+              | (Rone , Typ.One) ->
+              | (Rlolli , Typ.Lolli (a , b)) ->
+              | (Llolli (tvar) , _) ->
+              | (Ltensor (tvar) , _) ->
+              | (Lwith1 (tvar) , _) ->
+              | (Lwith2 (tvar) , _) ->
+              | (Lplus (tvar) , _) ->
+              | (Lone (tvar) , _) -> *)
+              | _ -> failwith "Rule doesn't match the type of the hole."
+              )
+        | _ -> (Node ((ctx , tm , tp) , []), None))
+  | Node ((ctx , tm , tp) , drvs) ->
+      let pairs = List.map (fun d -> refineHole d mv rule dlt) drvs in
+      let upd = List.fold_left (fun b (_ , res) -> (match (b , res) with
+                                                      | (Some _ , _) -> b
+                                                      | (None , _) -> res)) None pairs in
+      let f = match upd with
+              | None -> (fun x -> x)
+              | Some (f' , _) -> f' in
+            (Node ((ctx , f tm , tp) , List.map (fun (x , y) -> x) pairs) , upd)
 
 
-let rec findBottom holeTM = function
+(* let rec findBottom holeTM = function
   | Node ((ctx , tm , tp) , []) when Term.aequiv holeTM tm -> Some (ctx , tp)
   | Node ((_) , dl) -> List.fold_left
                           (function | (Some x , _) -> Some x | (_ , Some x) -> Some x | (_ , _) -> None)
                           (None) (List.map (findBottom holeTM) dl)
   | _ -> None
+
 
 let rec applyToTerm holeTM f tm =
   match Term.out tm with
@@ -102,49 +172,20 @@ let rec applyToTerm holeTM f tm =
   | Term.Inr tm -> Term.into (Term.Inr (applyToHoleInTerm holeTM f tm))
   | _ -> tm
 
-let rec applyToAllSuchHoles holeTM f drv =
-  match drv with
-  | Node ((dt , ctx , tm , tp) , dl) ->
-        let dl' = List.map (applyToAllSuchHoles holeTM f) dl in
-        Node ((dt , ctx , applyToHoleInTerm holeTM f tm , tp) , dl')
-
-let rec refineHole drv holeTM rul =
-  let res = findBottom holeTM drv in
-  match res with
-    | None -> failwith "Invalid hole selected"
-    | Some (dt , ctx , tp) ->
-        (match rul with
-        | Id -> (match TmHshtbl.fold (fun k v l -> (k,v)::l) ctx [] with
-                      | [(x,tp')] when Typ.aequiv tp tp' ->
-                          Axiom (dt , ctx , Term.into (Term.Var x) , tp)
-                      | _ -> failwith "Cannot use identity rule here")
-        | Rtensor ->
-        | Rplus1 ->
-        | Rplus2 ->
-        | Rwith ->
-        | Rone ->
-        | Rlolli ->
-        | Ltensor ->
-        | Lwith1 ->
-        | Lwith2 ->
-        | Lplus ->
-        | Lone ->  )
-
-
-let makeIdSub ctx =
-  let id = TmHshtbl.create 256 in
-    TmHshtbl.iter (fun k v -> TmHshtbl.add id k (Term.into (Term.Var k))) ctx ; id
+*)
 
 let startDrv ctx tp =
   let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
-  let hole1MV = TermVar.newT (string_of_int hole1) in
+  let hole1MV = MetaVar.newT (string_of_int hole1) in
   let hole1sub = makeIdSub ctx in
   let hole1TM = Term.into (Term.MV (hole1MV , hole1sub)) in
-  let dt = TmHshtbl.create 256 in
+  let dt = Hashtbl.create 256 in
   let hole1ctx = TmHshtbl.copy ctx in
-  let () = TmHshtbl.add dt hole1TM (hole1ctx , tp) in
+  let () = Hashtbl.add dt hole1MV (hole1ctx , tp) in
     (dt , Node ((ctx , hole1TM , tp) , []))
 
-let rec completed dt = function
-  | Node ((_ , tm , _) , []) when TmHshtbl.mem dt tm -> false
+let rec completed = function
+  | Node ((_ , tm , _) , []) -> (match Term.out tm with
+                                | Term.MV _ -> false
+                                | _ -> true)
   | Node ((ctx , tm , tp) , dl) -> List.fold_left (&&) (true) (List.map (completed) dl)
