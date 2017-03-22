@@ -97,6 +97,39 @@ let rec recurInTerm t mv newTerm =
   | Term.Case (z , (x , t1 ) , (y , t2)) -> Term.into (Term.Case (z , (x , ri t1) , (y , ri t2)))
   | _ -> t
 
+
+let rec createTerm (r : rule) (mv : Term.metaVar) (dlt : Typecheck.delta) : Term.t option =
+let (mvCtx , mvTp) = Hashtbl.find dlt mv in
+  match (r, mvTp) with
+    | (Id (tvar) , mvTp) when Typ.aequiv mvTp (TmHshtbl.find mvCtx tvar) ->
+        Some (Term.into (Term.Var tvar))
+    | (Rtensor , Typ.Tensor (a , b)) ->
+    | (Rplus1 , Typ.Or (a , b)) ->
+        let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
+        let newMV = MetaVar.newT (string_of_int hole1) in
+        let mvTerm = Term.into (Term.MV (newMV , makeIdSub mvCtx)) in
+        let newTerm = (Term.into (Term.Inl (applySub sub mvTerm))) in
+        let () = Hashtbl.add dlt newMV (mvCtx , a) in
+          Some newTerm
+    | (Rplus2 , Typ.Or (a , b)) ->
+        let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
+        let newMV = MetaVar.newT (string_of_int hole1) in
+        let mvTerm = Term.into (Term.MV (newMV , makeIdSub mvCtx)) in
+        let newTerm = (Term.into (Term.Inr (applySub sub mvTerm))) in
+        let () = Hashtbl.add dlt newMV (mvCtx , a) in
+          Some newTerm
+    | (Rwith , Typ.With (a , b)) ->
+    | (Rone , Typ.One) -> Some (Term.into (Term.Star))
+    | (Rlolli , Typ.Lolli (a , b)) ->
+    | (Llolli (tvar) , _) ->
+    | (Ltensor (tvar) , _) ->
+    | (Lwith1 (tvar) , _) ->
+    | (Lwith2 (tvar) , _) ->
+    | (Lplus (tvar) , _) ->
+    | (Lone (tvar) , _) ->
+    | _ -> None
+
+(*
 let rec refineHole (drv : drv) (mv : Term.metaVar) (rule : rule) (dlt : Typecheck.delta) :
       (drv * ((Term.t -> Term.t) * delta) option) =
   match drv with
@@ -141,7 +174,7 @@ let rec refineHole (drv : drv) (mv : Term.metaVar) (rule : rule) (dlt : Typechec
               | None -> (fun x -> x)
               | Some (f' , _) -> f' in
             (Node ((ctx , f tm , tp) , List.map (fun (x , y) -> x) pairs) , upd)
-
+*)
 
 (* let rec findBottom holeTM = function
   | Node ((ctx , tm , tp) , []) when Term.aequiv holeTM tm -> Some (ctx , tp)

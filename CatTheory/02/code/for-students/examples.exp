@@ -1,0 +1,18 @@
+1 + 2;
+
+3 + 4 + 5;
+
+"foo" ^ "bar";
+
+"foo" ^ "bar" ^ "baz";
+
+let x be "x" in
+  let xx be "(" ^ x ^ " " ^ x ^ ")" in
+    let w be "(\" ^ x ^ ".f " ^ xx ^ ")" in
+      let y be "\f." ^ w ^ " " ^ w
+        in y end
+    end
+  end
+end;
+
+let x be 2 in x + "foo" end;

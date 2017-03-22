@@ -1,0 +1,58 @@
+To compile the code, run SML/NJ and then type
+
+  - CM.make("sources.cm"); 
+
+at the prompt.
+
+There are three stub files you need to fill in:
+
+  exp.sml:           fill in the functions hide and show
+  check.sml          fill in the function check
+  step.sml:          fill in the functions value and step
+
+The concrete syntax of EXP follows this grammar:
+
+  program ::= exp0 ;
+
+  exp0    ::= exp0 + exp1 | exp0 ^ exp1 | exp1
+  exp1    ::= ( exp0 )
+           |  NUMBER
+           |  STRING
+           |  NAME
+           |  let NAME be exp0 in exp0 end
+
+where NUMBER is a string of digits, STRING is a string of characters
+surrounded by double-quotes, and NAME is a string of letters. See the
+examples.exp file for examples. Note the "end" at the end of the let;
+it doesn't match what we wrote in the handout so don't be confused.
+
+To test out your code there is a top-level structures, Top which Each
+follows the TOP signature (in top.sml) which provides functions you can
+use to run a read-eval-print loop or process expressions from a file.
+
+Structure of the support code:
+
+name-sig.sml            signature for names
+name.sml                implementation of names
+
+typ-sig.sml             signature for L{nat,string} types
+typ.sml                 implementation
+
+exp-sig.sml             signature for expressions
+exp-named.sml           implementation of expressions 
+
+check-sig.sml           signature for type checker
+check.sml               implementation of type checker
+
+step-sig.sml            signature for evaluator
+step.sml                implementation of evaluator
+
+top.sml                 read-eval-print loop
+examples.exp            some example programs
+
+stream.sml              stream library
+input.sml               library for reading files/stdin as streams
+lexer.sml               lexer (convert strings to tokens)
+parse.sml               parser (concrete to abstract syntax)
+print.sml               pretty printer
+

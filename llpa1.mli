@@ -21,6 +21,8 @@ val getType : unit -> Typ.t
 
 val startDrv : context -> Typ.t -> (delta * drv)
 
-val refineHole : drv -> Term.metaVar -> rule -> delta -> (drv * ((Term.t -> Term.t) * delta) option)
+val createTerm : rule -> Term.metaVar -> Typecheck.delta -> Term.t option
+
+(* val refineHole : drv -> Term.metaVar -> rule -> delta -> (drv * ((Term.t -> Term.t) * delta) option) *)
 
 val completed : drv -> bool

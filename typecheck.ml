@@ -152,6 +152,7 @@ let typechecker dlt ctx tm tp =
   let rec typecheck ctx tm tp =
     match (Term.out tm , tp) with
     (* Right Rules *)
+    (* Check substitution of mv with ctx, see if its the same, if not we don't typecheck *)
     | (Term.MV (mv , sub) , tp) when (Hashtbl.mem dlt mv && Typ.aequiv tp (snd (Hashtbl.find dlt mv))) -> Some ctx
     | (Term.Var x , tp) ->
         (match lookup ctx x with
