@@ -7,6 +7,8 @@ typecheck:
 	ocamlc -c placevar.ml
 	ocamlc -c tmhshtbl.mli
 	ocamlc -c tmhshtbl.ml
+	ocamlc -c plhshtbl.mli
+	ocamlc -c plhshtbl.ml
 	ocamlc -c tmvarrest.mli
 	ocamlc -c tmvarrest.ml
 	ocamlc -c placerest.mli
@@ -23,5 +25,5 @@ typecheck:
 	ocamlc -c typecheck.mli
 	ocamlc -c typecheck.ml
 	ocamlc -c llpa1.mli
-	rlwrap ocaml termvar.cmo metavar.cmo placevar.cmo tmhshtbl.cmo syntax.cmo tmvarrest.cmo placerest.cmo lexer.cmo parser.cmo typecheck.cmo
+	rlwrap ocaml termvar.cmo metavar.cmo placevar.cmo tmhshtbl.cmo plhshtbl.cmo syntax.cmo tmvarrest.cmo placerest.cmo lexer.cmo parser.cmo typecheck.cmo
 

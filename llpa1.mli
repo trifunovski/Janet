@@ -11,8 +11,6 @@ type rule =
 
 type seq = context * rest * Term.t * Typ.t
 
-type drv = Node of seq * drv list
-
 (*
 val printDrv : drv -> unit
 

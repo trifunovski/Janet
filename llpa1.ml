@@ -2,6 +2,7 @@ open Termvar
 open Metavar
 open Placevar
 open Tmhshtbl
+open Plhshtbl
 open Syntax
 open Parser
 open Typecheck
@@ -9,6 +10,8 @@ open Placerest
 open Tmvarrest
 
 exception Unimplemented
+exception UnmatchedVariable
+exception UnknownRule
 
 type rule =
      | Id of TermVar.t | Rtensor | Rplus1 | Rplus2 | Rwith | Rone | Rlolli
@@ -16,6 +19,8 @@ type rule =
      | Lwith2 of TermVar.t | Lplus of TermVar.t | Lone of TermVar.t
 
 type seq = context * rest * Term.t * Typ.t
+
+type alpha = (TermVar.t list) PlHshtbl.t
 
 type hole = Term.t
 
@@ -53,7 +58,7 @@ let possibleRules ctx tp =
   match tp with
     | Typ.Prop a ->
         (match TmHshtbl.fold (fun k v acc -> (k,v)::acc) ctx [] with
-        | [(x,tp)] when Typ.aequiv (Typ.Prop a) tp -> ["I" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+        | [(x,tp)] when Typ.aequiv (Typ.Prop a) tp -> ["Id" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
         | _ -> ["Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"])
     | Typ.Tensor (t1 , t2) -> l@["Xright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
     | Typ.One ->
@@ -105,16 +110,30 @@ let createPlace () =
   let placePV = PlaceVar.newT (string_of_int place) in
     placePV
 
-let rec createTerm rule hlmv str ctx (r1,r2) htp eqs delta hls =
+let rec createTerm alpha rule hlmv str ctx (r1,r2) htp eqs delta hls =
   match (htp, rule) with
     (Typ.Tensor (t1 , t2), Rtensor) ->
       let (hls , delta) = removeHole hlmv str delta hls in
       let (p1 , p2) = (createPlace (), createPlace ()) in
+      let () = PlHshtbl.add alpha p1 (SetTmVar.fold (fun k s -> k :: s) r2 []) in
+      let () = PlHshtbl.add alpha p2 (SetTmVar.fold (fun k s -> k :: s) r2 []) in
       let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx (SetPlaceVar.add p1 (SetPlaceVar.empty) , SetTmVar.empty) in
       let (hole2MV, hole2TM, hls, delta) = createHole delta hls t2 ctx (SetPlaceVar.add p2 (SetPlaceVar.empty) , SetTmVar.empty) in
       let newTm = Term.into (Term.TenPair (hole1TM, hole2TM)) in
       let newEqs = (Sin (r1,r2) , Sin (SetPlaceVar.add p1 (SetPlaceVar.add p2 (SetPlaceVar.empty)) , SetTmVar.empty)) :: eqs
-      in (newTm, newEqs, hls, delta)
+      in (alpha, newTm, newEqs, hls, delta)
+  | (htp , Id x) when (TmHshtbl.mem ctx x && Typ.aequiv htp (TmHshtbl.find ctx x) &&
+                      ((not (SetPlaceVar.is_empty r1) && (SetTmVar.is_empty r2) && (SetPlaceVar.fold (fun x f -> PlHshtbl.mem alpha x || f) r1 false))
+                      || (SetTmVar.mem x r2 && SetTmVar.cardinal r2 = 1))) ->
+      let (hls , delta) = removeHole hlmv str delta hls in
+      let newTm = Term.into (Term.Var (x)) in
+      let () = if (SetTmVar.mem x r2) then SetPlaceVar.iter (fun a -> PlHshtbl.replace alpha a []) r1
+               else (SetPlaceVar.iter (fun a -> (PlHshtbl.replace alpha a [x]);
+               List.iter (fun (e1,e2) -> match e2 with
+                                            Sin (e2p,e2v) -> if SetPlaceVar.mem a e2p then (SetPlaceVar.iter (fun a' -> if a = a' then () else PlHshtbl.replace a' ) e2p) else () 
+                                          | _ -> raise Unimplemented)
+               eqs) r1)
+      in (alpha, newTm, eqs, hls, delta)
   | _ -> raise Unimplemented
 
 
@@ -135,23 +154,59 @@ let rec recurInTerm t mv newTerm =
   | Term.Case (z , (x , t1 ) , (y , t2)) -> Term.into (Term.Case (z , (x , ri t1) , (y , ri t2)))
   | _ -> t
 
-let rec analyzeHole hls delta (ctx,rest,tm,tp) eqs str =
-  let hlmv = Hashtbl.find hls str in
-  let (hctx, (r1, r2), htp) = Hashtbl.find delta hlmv in
-  let () = print_endline ("You can use the following variables: " ^
-          (SetTmVar.fold (fun k s -> s ^ (TermVar.toUserString k) ^ ", ") r2 "")) in
-  let () = print_endline ("You can use the following rules: "^ listToString (possibleRules hctx htp)) in
+let rec occurs x = function
+  | [] -> false
+  | y :: ys -> TermVar.equal x y || occurs x ys
+
+let rec removeDups = function
+  | [] -> []
+  | x :: xs -> if occurs x xs then removeDups xs else x :: (removeDups xs)
+
+let pick_termvar vars =
+  let () = print_endline ("Select the variable to which to apply the rule:") in
+  let var = input_line stdin in
+  let opt = List.fold_left (fun prev v -> if TermVar.toUserString v = var then Some v else None) None vars in
+  match opt with
+    Some v -> v
+  | None -> raise UnmatchedVariable
+
+let pick_rule vars =
   let () = print_endline ("Select a rule to be applied:") in
   let rule = input_line stdin in
-  let (newTm, neweq, newhls, newdelta) = createTerm Rtensor hlmv str hctx (r1,r2) htp eqs delta hls in
-    (newhls, newdelta, (ctx,rest,recurInTerm tm hlmv newTm ,tp), neweq)
+  match rule with
+    "Id" -> Id (pick_termvar (vars))
+  | "Xleft" -> Ltensor (pick_termvar (vars))
+  | "-oleft" -> Llolli (pick_termvar (vars))
+  | "&left1" -> Lwith1 (pick_termvar (vars))
+  | "&left2" -> Lwith2 (pick_termvar (vars))
+  | "+left" -> Lplus (pick_termvar (vars))
+  | "1left" -> Lone (pick_termvar (vars))
+  | "Xright" -> Rtensor
+  | "-oright" -> Rlolli
+  | "&right" -> Rwith
+  | "+right1" -> Rplus1
+  | "+right2" -> Rplus2
+  | "1right" -> Rone
+  | _ -> raise UnknownRule
 
-let rec runStep hls delta drv eqs =
+let rec analyzeHole alpha hls delta (ctx,rest,tm,tp) eqs str =
+  let hlmv = Hashtbl.find hls str in
+  let (hctx, (r1, r2), htp) = Hashtbl.find delta hlmv in
+  let l = SetPlaceVar.fold (fun k s -> (Hashtbl.find alpha k)@s) r1 [] in
+  let l2 = SetTmVar.fold (fun k s -> k :: s) r2 [] in
+  let vars = (removeDups(l@l2)) in
+  let () = print_endline ("You can use the following variables: " ^ (listToString (List.map (fun k -> TermVar.toUserString k) vars))) in
+  let () = print_endline ("You can use the following rules: "^ listToString (possibleRules hctx htp)) in
+  let rule = pick_rule vars in
+  let (newAlpha, newTm, neweq, newhls, newdelta) = createTerm alpha rule hlmv str hctx (r1,r2) htp eqs delta hls in
+    (newAlpha, newhls, newdelta, (ctx,rest,recurInTerm tm hlmv newTm ,tp), neweq)
+
+let rec runStep alpha hls delta drv eqs =
   let () = print_endline "Enter the desired hole #: " in
   let str = input_line stdin in
   match Hashtbl.mem hls str with
-    true -> (print_endline("hole "^ str ^ " was selected."); analyzeHole hls delta drv eqs str)
-  | false -> (print_endline ("You have entered a non-existing hole. Please try again."); (runStep hls delta drv eqs))
+    true -> (print_endline("hole "^ str ^ " was selected."); analyzeHole alpha hls delta drv eqs str)
+  | false -> (print_endline ("You have entered a non-existing hole. Please try again."); (runStep alpha hls delta drv eqs))
 
 
 let startSeq ctx ctxlist tp =
@@ -161,106 +216,26 @@ let startSeq ctx ctxlist tp =
   let hole1TM = Term.into (Term.MV (hole1MV , hole1sub)) in
   let dt = Hashtbl.create 256 in
   let hls = Hashtbl.create 256 in
+  let alpha = PlHshtbl.create 256 in
   let () = Hashtbl.add hls (string_of_int hole1) hole1MV in
   let hole1ctx = TmHshtbl.copy ctx in
   let () = Hashtbl.add dt hole1MV (hole1ctx , (SetPlaceVar.empty , SetTmVar.of_list (List.map (fun (_,x,_) -> x) ctxlist)) , tp) in
-    (hls, dt , (ctx , (SetPlaceVar.empty, SetTmVar.of_list (List.map (fun (_,x,_) -> x) ctxlist)), hole1TM , tp))
+    (alpha, hls, dt , (ctx , (SetPlaceVar.empty, SetTmVar.of_list (List.map (fun (_,x,_) -> x) ctxlist)), hole1TM , tp))
 
 let rec completed delta = Hashtbl.length delta = 0
 
-let rec loop (hls,delta,seq,eqs) =
+let rec loop (alpha,hls,delta,seq,eqs) =
   let () = print_endline (seqToString seq) in
-  if completed delta then (hls,delta,seq,eqs)
-  else loop(runStep hls delta seq eqs)
+  if completed delta then let () = print_endline("We are done!") in (alpha,hls,delta,seq,eqs)
+  else loop(runStep alpha hls delta seq eqs)
 
 let main () =
   let (ctx, ctxlist) = getContext () in
   let tp = getType () in
-  let (hls, dlt, seq) = startSeq ctx ctxlist tp
+  let (alpha, hls, dlt, seq) = startSeq ctx ctxlist tp
 in
-  loop (hls, dlt, seq, [])
+  loop (alpha, hls, dlt, seq, [])
 
-
-
-
-  (*
-  let rec createTerm (r : rule) (mv : Term.metaVar) (dlt : Typecheck.delta) : Term.t option =
-  let (mvCtx , mvTp) = Hashtbl.find dlt mv in
-    match (r, mvTp) with
-      | (Id (tvar) , mvTp) when Typ.aequiv mvTp (TmHshtbl.find mvCtx tvar) ->
-          Some (Term.into (Term.Var tvar))
-      | (Rtensor , Typ.Tensor (a , b)) ->
-      | (Rplus1 , Typ.Or (a , b)) ->
-          let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
-          let newMV = MetaVar.newT (string_of_int hole1) in
-          let mvTerm = Term.into (Term.MV (newMV , makeIdSub mvCtx)) in
-          let newTerm = (Term.into (Term.Inl (applySub sub mvTerm))) in
-          let () = Hashtbl.add dlt newMV (mvCtx , a) in
-            Some newTerm
-      | (Rplus2 , Typ.Or (a , b)) ->
-          let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
-          let newMV = MetaVar.newT (string_of_int hole1) in
-          let mvTerm = Term.into (Term.MV (newMV , makeIdSub mvCtx)) in
-          let newTerm = (Term.into (Term.Inr (applySub sub mvTerm))) in
-          let () = Hashtbl.add dlt newMV (mvCtx , a) in
-            Some newTerm
-      | (Rwith , Typ.With (a , b)) ->
-      | (Rone , Typ.One) -> Some (Term.into (Term.Star))
-      | (Rlolli , Typ.Lolli (a , b)) ->
-      | (Llolli (tvar) , _) ->
-      | (Ltensor (tvar) , _) ->
-      | (Lwith1 (tvar) , _) ->
-      | (Lwith2 (tvar) , _) ->
-      | (Lplus (tvar) , _) ->
-      | (Lone (tvar) , _) ->
-      | _ -> None
-  *)
-  (*
-  let rec refineHole (drv : drv) (mv : Term.metaVar) (rule : rule) (dlt : Typecheck.delta) :
-        (drv * ((Term.t -> Term.t) * delta) option) =
-    match drv with
-    | Node ((ctx , tm , tp) , []) ->
-        (match Term.out tm with
-          | Term.MV (mv' , sub) when MetaVar.equal mv mv' ->
-              let (mvCtx , mvTp) = Hashtbl.find dlt mv in
-              (match (rule , mvTp) with
-                | (Id (tvar) , mvTp) when Typ.aequiv mvTp (TmHshtbl.find mvCtx tvar) ->
-                    let newTerm = (Term.into (Term.Var tvar)) in
-                    (Node ((ctx , Term.applySub sub newTerm, tp) , []) , Some ((fun t -> recurInTerm t mv newTerm) , dlt))
-                | (Rplus1 , Typ.Or (a , b)) ->
-                    let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
-                    let newMV = MetaVar.newT (string_of_int hole1) in
-                    let mvTerm = Term.into (Term.MV (newMV , makeIdSub mvCtx)) in
-                    let newTerm = (Term.into (Term.Inl (applySub sub mvTerm))) in
-                    let () = Hashtbl.add dlt newMV (mvCtx , a) in
-                    (Node ((ctx , Term.applySub sub newTerm, Typ.Or (a , b)),
-                        [Node ((ctx , mvTerm , a) , [])]) , Some ((fun t -> recurInTerm t mv newTerm) , dlt))
-            (*
-                | (Rtensor , Typ.Tensor (a , b)) ->
-
-                | (Rplus2 , Typ.Or (a , b)) ->
-                | (Rwith , Typ.With (a , b)) ->
-                | (Rone , Typ.One) ->
-                | (Rlolli , Typ.Lolli (a , b)) ->
-                | (Llolli (tvar) , _) ->
-                | (Ltensor (tvar) , _) ->
-                | (Lwith1 (tvar) , _) ->
-                | (Lwith2 (tvar) , _) ->
-                | (Lplus (tvar) , _) ->
-                | (Lone (tvar) , _) -> *)
-                | _ -> failwith "Rule doesn't match the type of the hole."
-                )
-          | _ -> (Node ((ctx , tm , tp) , []), None))
-    | Node ((ctx , tm , tp) , drvs) ->
-        let pairs = List.map (fun d -> refineHole d mv rule dlt) drvs in
-        let upd = List.fold_left (fun b (_ , res) -> (match (b , res) with
-                                                        | (Some _ , _) -> b
-                                                        | (None , _) -> res)) None pairs in
-        let f = match upd with
-                | None -> (fun x -> x)
-                | Some (f' , _) -> f' in
-              (Node ((ctx , f tm , tp) , List.map (fun (x , y) -> x) pairs) , upd)
-  *)
 
   (*
 
