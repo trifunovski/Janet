@@ -9,10 +9,11 @@ type rule =
      | Llolli of TermVar.t | Ltensor of TermVar.t | Lwith1 of TermVar.t
      | Lwith2 of TermVar.t | Lplus of TermVar.t | Lone of TermVar.t
 
-type seq = context * Term.t * Typ.t
+type seq = context * rest * Term.t * Typ.t
 
 type drv = Node of seq * drv list
 
+(*
 val printDrv : drv -> unit
 
 val getContext : unit -> context
@@ -21,8 +22,11 @@ val getType : unit -> Typ.t
 
 val startDrv : context -> Typ.t -> (delta * drv)
 
+
 val createTerm : rule -> Term.metaVar -> Typecheck.delta -> Term.t option
 
 (* val refineHole : drv -> Term.metaVar -> rule -> delta -> (drv * ((Term.t -> Term.t) * delta) option) *)
 
 val completed : drv -> bool
+
+*)

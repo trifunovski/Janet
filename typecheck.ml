@@ -3,10 +3,18 @@ open Tmhshtbl
 open Syntax
 open Parser
 open Parseterm
+open Placerest
+open Tmvarrest
 
 type context = Typ.t TmHshtbl.t
 
-type delta = (Term.metaVar , (context * Typ.t)) Hashtbl.t
+type rest = SetPlaceVar.t * SetTmVar.t
+
+type form = Sin of rest | Sub of rest * (rest * TermVar.t)
+
+type eqs = (form * form) list
+
+type delta = (Term.metaVar , (context * rest * Typ.t)) Hashtbl.t
 
 let lookup ctx v = try
   (Some (TmHshtbl.find ctx v))
@@ -153,7 +161,6 @@ let typechecker dlt ctx tm tp =
     match (Term.out tm , tp) with
     (* Right Rules *)
     (* Check substitution of mv with ctx, see if its the same, if not we don't typecheck *)
-    | (Term.MV (mv , sub) , tp) when (Hashtbl.mem dlt mv && Typ.aequiv tp (snd (Hashtbl.find dlt mv))) -> Some ctx
     | (Term.Var x , tp) ->
         (match lookup ctx x with
           | Some tp' when Typ.aequiv tp tp' ->
@@ -235,6 +242,8 @@ let typechecker dlt ctx tm tp =
             | _ -> None)
         | _ -> None)
     | _ -> None
+    (*
+    | (Term.MV (mv , sub) , tp) when (Hashtbl.mem dlt mv && Typ.aequiv tp (snd (Hashtbl.find dlt mv))) -> Some ctx *)
   in
   match typecheck workingctx tm tp with
     | Some rest_ctx -> if TmHshtbl.length rest_ctx = 0 then true else false
