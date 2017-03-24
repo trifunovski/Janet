@@ -207,6 +207,76 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
     let newTm = Term.into (Term.Letone (Term.into(Term.Star), z, hole1TM)) in
     let newEqs = eqs
     in (alpha, newTm, newEqs, hls, delta)
+  | (Typ.Or(t1,t2), Rplus1) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let restCtx = PlHshtbl.find alpha r in
+    let (alpha , p1) = createPlace alpha restCtx in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx p1 in
+    let newTm = Term.into (Term.Inl (hole1TM)) in
+    let newEqs = eqs
+    in (alpha, newTm, newEqs, hls, delta)
+  | (Typ.Or(t1,t2), Rplus2) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let restCtx = PlHshtbl.find alpha r in
+    let (alpha , p1) = createPlace alpha restCtx in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx p1 in
+    let newTm = Term.into (Term.Inr (hole1TM)) in
+    let newEqs = eqs
+    in (alpha, newTm, newEqs, hls, delta)
+  | (htp, Lplus z) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let (Typ.Or(t1,t2)) = TmHshtbl.find ctx z in
+    let restCtx = PlHshtbl.find alpha r in
+    let x = TermVar.newT "x" in
+    let y = TermVar.newT "y" in
+    let restCtx1 = SetTmVar.add x (SetTmVar.remove z restCtx) in
+    let restCtx2 = SetTmVar.add y (SetTmVar.remove z restCtx) in
+    let (alpha , p1) = createPlace alpha restCtx1 in
+    let (alpha , p2) = createPlace alpha restCtx2 in
+    let holectx1 = TmHshtbl.copy ctx in
+    let holectx2 = TmHshtbl.copy ctx in
+    let () = TmHshtbl.add holectx1 x t1 in
+    let () = TmHshtbl.add holectx2 y t2 in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp holectx1 p1 in
+    let (hole2MV, hole2TM, hls, delta) = createHole delta hls htp holectx2 p2 in
+    let newTm = Term.into (Term.Case (z , (x, hole1TM), (y, hole2TM))) in
+    let newEqs = eqs
+    in (alpha, newTm, newEqs, hls, delta)
+  | (Typ.With(t1,t2), Rwith) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx r in
+    let (hole2MV, hole2TM, hls, delta) = createHole delta hls t2 ctx r in
+    let newTm = Term.into (Term.WithPair (hole1TM, hole2TM)) in
+    let newEqs = eqs
+    in (alpha, newTm, newEqs, hls, delta)
+  | (htp , Lwith1 z) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let (Typ.With(t1,t2)) = TmHshtbl.find ctx z in
+    let restCtx = PlHshtbl.find alpha r in
+    let x = TermVar.newT "x" in
+    let dummy = TermVar.newT "_" in
+    let restCtx = SetTmVar.add (x) (SetTmVar.remove z restCtx) in
+    let (alpha , p1) = createPlace alpha restCtx in
+    let holectx = TmHshtbl.copy ctx in
+    let () = TmHshtbl.add holectx x t1 in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp holectx p1 in
+    let newTm = Term.into (Term.Letfst (Term.into(Term.WithPair(Term.into(Term.Var x),Term.into(Term.Var dummy))), z, hole1TM)) in
+    let newEqs = eqs
+    in (alpha, newTm, newEqs, hls, delta)
+  | (htp , Lwith2 z) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let (Typ.With(t1,t2)) = TmHshtbl.find ctx z in
+    let restCtx = PlHshtbl.find alpha r in
+    let x = TermVar.newT "x" in
+    let dummy = TermVar.newT "_" in
+    let restCtx = SetTmVar.add (x) (SetTmVar.remove z restCtx) in
+    let (alpha , p1) = createPlace alpha restCtx in
+    let holectx = TmHshtbl.copy ctx in
+    let () = TmHshtbl.add holectx x t2 in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp holectx p1 in
+    let newTm = Term.into (Term.Letsnd (Term.into(Term.WithPair(Term.into(Term.Var dummy),Term.into(Term.Var x))), z, hole1TM)) in
+    let newEqs = eqs
+    in (alpha, newTm, newEqs, hls, delta)
   | _ -> raise Unimplemented
 
 
