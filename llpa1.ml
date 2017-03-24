@@ -20,8 +20,6 @@ type rule =
 
 type seq = context * rest * Term.t * Typ.t
 
-type alpha = (TermVar.t list) PlHshtbl.t
-
 type hole = Term.t
 
 let holeCtr = ref 0
@@ -75,20 +73,6 @@ let rec listToString = function
     | x :: [] -> x
     | x :: xs -> (x ^ ", ") ^ (listToString xs)
 
-let rec wrap = function
-    | Sin (places , vars) -> SetTmVar.fold (fun x xs -> x :: xs) vars []
-    | Sub ((p1, v1),((p2, v2) , _)) -> (SetTmVar.fold (fun x xs -> x :: xs) v1 []) @ (SetTmVar.fold (fun x xs -> x :: xs) v2 [])
-
-let rec isIn v = function
-    | Sin (places , vars) -> SetPlaceVar.mem v places
-    | Sub ((p1, _),((p2, _) , _)) -> SetPlaceVar.mem v p1 || SetPlaceVar.mem v p2
-
-let rec collect v = function
-  | [] -> []
-  | (eq1 , eq2)::xs ->
-      let l = if isIn v eq2 then wrap eq1 else []
-      in l@(collect v xs)
-
 let seqToString (ctx, rest, tm, tp) = (ctxToString ctx) ^ " ⊢ " ^ (Term.toString tm) ^ " : " ^ (Typ.toString tp)
 
 let removeHole hlmv str delta hls =
@@ -105,35 +89,76 @@ let createHole delta hls tp hlctx rest =
   let () = Hashtbl.add delta hole1MV (hlctx , rest , tp)
   in (hole1MV, hole1TM, hls, delta)
 
-let createPlace () =
+let createPlace alpha ctxSet =
   let place = placeCtr := !placeCtr + 1; !placeCtr in
-  let placePV = PlaceVar.newT (string_of_int place) in
-    placePV
+  let plPV = PlaceVar.newT (string_of_int place) in
+  let () = PlHshtbl.add alpha plPV ctxSet in
+    (alpha, plPV)
 
-let rec createTerm alpha rule hlmv str ctx (r1,r2) htp eqs delta hls =
+let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
   match (htp, rule) with
     (Typ.Tensor (t1 , t2), Rtensor) ->
       let (hls , delta) = removeHole hlmv str delta hls in
-      let (p1 , p2) = (createPlace (), createPlace ()) in
-      let () = PlHshtbl.add alpha p1 (SetTmVar.fold (fun k s -> k :: s) r2 []) in
-      let () = PlHshtbl.add alpha p2 (SetTmVar.fold (fun k s -> k :: s) r2 []) in
-      let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx (SetPlaceVar.add p1 (SetPlaceVar.empty) , SetTmVar.empty) in
-      let (hole2MV, hole2TM, hls, delta) = createHole delta hls t2 ctx (SetPlaceVar.add p2 (SetPlaceVar.empty) , SetTmVar.empty) in
+      let restCtx = PlHshtbl.find alpha r in
+      let (alpha , p1) = createPlace alpha restCtx in
+      let (alpha , p2) = createPlace alpha restCtx in
+      let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx p1 in
+      let (hole2MV, hole2TM, hls, delta) = createHole delta hls t2 ctx p2 in
       let newTm = Term.into (Term.TenPair (hole1TM, hole2TM)) in
-      let newEqs = (Sin (r1,r2) , Sin (SetPlaceVar.add p1 (SetPlaceVar.add p2 (SetPlaceVar.empty)) , SetTmVar.empty)) :: eqs
+      let newEqs = (Union (r , (p1 , p2))) :: eqs
       in (alpha, newTm, newEqs, hls, delta)
-  | (htp , Id x) when (TmHshtbl.mem ctx x && Typ.aequiv htp (TmHshtbl.find ctx x) &&
-                      ((not (SetPlaceVar.is_empty r1) && (SetTmVar.is_empty r2) && (SetPlaceVar.fold (fun x f -> PlHshtbl.mem alpha x || f) r1 false))
-                      || (SetTmVar.mem x r2 && SetTmVar.cardinal r2 = 1))) ->
+  | (htp, Ltensor x) ->
+      let (hls , delta) = removeHole hlmv str delta hls in
+      let (Typ.Tensor(t1,t2)) = TmHshtbl.find ctx x in
+      let restCtx = PlHshtbl.find alpha r in
+      let x1 = TermVar.newT "x1" in
+      let x2 = TermVar.newT "x2" in
+      let restCtx = SetTmVar.add (x1) (SetTmVar.add (x2) (SetTmVar.remove x restCtx)) in
+      let (alpha , p1) = createPlace alpha restCtx in
+      let holectx = TmHshtbl.copy ctx in
+      let () = TmHshtbl.add holectx x1 t1 in
+      let () = TmHshtbl.add holectx x2 t2 in
+      let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp holectx p1 in
+      let newTm = Term.into (Term.Letten (Term.into(Term.TenPair(Term.into(Term.Var x1),Term.into(Term.Var x2))), x, hole1TM)) in
+      let newEqs = eqs
+      in (alpha, newTm, newEqs, hls, delta)
+  | (htp , Id x) when SetTmVar.mem x (PlHshtbl.find alpha r) && SetTmVar.cardinal (PlHshtbl.find alpha r) = 1 ->
       let (hls , delta) = removeHole hlmv str delta hls in
       let newTm = Term.into (Term.Var (x)) in
-      let () = if (SetTmVar.mem x r2) then SetPlaceVar.iter (fun a -> PlHshtbl.replace alpha a []) r1
-               else (SetPlaceVar.iter (fun a -> (PlHshtbl.replace alpha a [x]);
-               List.iter (fun (e1,e2) -> match e2 with
-                                            Sin (e2p,e2v) -> if SetPlaceVar.mem a e2p then (SetPlaceVar.iter (fun a' -> if a = a' then () else PlHshtbl.replace a' ) e2p) else () 
-                                          | _ -> raise Unimplemented)
-               eqs) r1)
+      let () = PlHshtbl.replace alpha r (SetTmVar.singleton x) in
+      let () = List.iter (fun eq ->
+                          match eq with
+                          | Union (_, (a1,a2)) when PlaceVar.equal a1 r -> PlHshtbl.replace alpha a2 (SetTmVar.diff (PlHshtbl.find alpha a2) (PlHshtbl.find alpha a1))
+                          | Union (_, (a1,a2)) when PlaceVar.equal a2 r -> PlHshtbl.replace alpha a1 (SetTmVar.diff (PlHshtbl.find alpha a1) (PlHshtbl.find alpha a2))
+                          | Sub (_, (a1, (_,a2,_))) when PlaceVar.equal a1 r -> ()
+                          | Sub (_, (a1, (_,a2,_))) when PlaceVar.equal a2 r -> ()
+                          | _ -> ()
+                          ) eqs
       in (alpha, newTm, eqs, hls, delta)
+  | (Typ.Lolli (t1 , t2), Rlolli) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let restCtx = PlHshtbl.find alpha r in
+    let x = TermVar.newT "x" in
+    let (alpha , p1) = createPlace alpha (SetTmVar.add x restCtx) in
+    let holectx = TmHshtbl.copy ctx in
+    let () = TmHshtbl.add holectx x t1 in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls t2 holectx p1 in
+    let newTm = Term.into (Term.Lam((x,t1),hole1TM))
+    in (alpha, newTm, eqs, hls, delta)
+  | (Typ.One , Rone) when SetTmVar.cardinal (PlHshtbl.find alpha r) = 0 ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let newTm = Term.into (Term.Star)
+    in (alpha, newTm, eqs, hls, delta)
+  | (htp , Lone z) ->
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let (Typ.One) = TmHshtbl.find ctx z in
+    let restCtx = PlHshtbl.find alpha r in
+    let restCtx = SetTmVar.remove z restCtx in
+    let (alpha , p1) = createPlace alpha restCtx in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp ctx p1 in
+    let newTm = Term.into (Term.Letone (Term.into(Term.Star), z, hole1TM)) in
+    let newEqs = eqs
+    in (alpha, newTm, newEqs, hls, delta)
   | _ -> raise Unimplemented
 
 
@@ -145,6 +170,7 @@ let rec recurInTerm t mv newTerm =
   | Term.App (t1 , t2) -> Term.into (Term.App (ri t1 , ri t2))
   | Term.TenPair (t1 , t2) -> Term.into (Term.TenPair (ri t1, ri t2))
   | Term.WithPair (t1 , t2) -> Term.into (Term.WithPair (ri t1, ri t2))
+  | Term.Letone (t1 , v , t2) -> Term.into (Term.Letone (ri t1, v , ri t2))
   | Term.Letten (t1 , v , t2) -> Term.into (Term.Letten (ri t1, v , ri t2))
   | Term.Letapp (t1 , v , t2) -> Term.into (Term.Letapp (ri t1, v , ri t2))
   | Term.Letfst (t1 , v , t2) -> Term.into (Term.Letfst (ri t1, v , ri t2))
@@ -165,7 +191,8 @@ let rec removeDups = function
 let pick_termvar vars =
   let () = print_endline ("Select the variable to which to apply the rule:") in
   let var = input_line stdin in
-  let opt = List.fold_left (fun prev v -> if TermVar.toUserString v = var then Some v else None) None vars in
+  let () = print_endline ("Printing current vars: " ^ listToString (List.map (fun k -> TermVar.toString k) vars)) in
+  let opt = List.fold_left (fun prev v -> if TermVar.toString v = var then Some v else prev) None vars in
   match opt with
     Some v -> v
   | None -> raise UnmatchedVariable
@@ -191,14 +218,12 @@ let pick_rule vars =
 
 let rec analyzeHole alpha hls delta (ctx,rest,tm,tp) eqs str =
   let hlmv = Hashtbl.find hls str in
-  let (hctx, (r1, r2), htp) = Hashtbl.find delta hlmv in
-  let l = SetPlaceVar.fold (fun k s -> (Hashtbl.find alpha k)@s) r1 [] in
-  let l2 = SetTmVar.fold (fun k s -> k :: s) r2 [] in
-  let vars = (removeDups(l@l2)) in
-  let () = print_endline ("You can use the following variables: " ^ (listToString (List.map (fun k -> TermVar.toUserString k) vars))) in
+  let (hctx, r, htp) = Hashtbl.find delta hlmv in
+  let l = SetTmVar.fold (fun k s -> k::s) (PlHshtbl.find alpha r) [] in
+  let () = print_endline ("You can use the following variables: " ^ (listToString (List.map (fun k -> TermVar.toString k) l))) in
   let () = print_endline ("You can use the following rules: "^ listToString (possibleRules hctx htp)) in
-  let rule = pick_rule vars in
-  let (newAlpha, newTm, neweq, newhls, newdelta) = createTerm alpha rule hlmv str hctx (r1,r2) htp eqs delta hls in
+  let rule = pick_rule l in
+  let (newAlpha, newTm, neweq, newhls, newdelta) = createTerm alpha rule hlmv str hctx r htp eqs delta hls in
     (newAlpha, newhls, newdelta, (ctx,rest,recurInTerm tm hlmv newTm ,tp), neweq)
 
 let rec runStep alpha hls delta drv eqs =
@@ -208,19 +233,13 @@ let rec runStep alpha hls delta drv eqs =
     true -> (print_endline("hole "^ str ^ " was selected."); analyzeHole alpha hls delta drv eqs str)
   | false -> (print_endline ("You have entered a non-existing hole. Please try again."); (runStep alpha hls delta drv eqs))
 
-
 let startSeq ctx ctxlist tp =
-  let hole1 = holeCtr := !holeCtr + 1; !holeCtr in
-  let hole1MV = MetaVar.newT (string_of_int hole1) in
-  let hole1sub = makeIdSub ctx in
-  let hole1TM = Term.into (Term.MV (hole1MV , hole1sub)) in
   let dt = Hashtbl.create 256 in
   let hls = Hashtbl.create 256 in
   let alpha = PlHshtbl.create 256 in
-  let () = Hashtbl.add hls (string_of_int hole1) hole1MV in
-  let hole1ctx = TmHshtbl.copy ctx in
-  let () = Hashtbl.add dt hole1MV (hole1ctx , (SetPlaceVar.empty , SetTmVar.of_list (List.map (fun (_,x,_) -> x) ctxlist)) , tp) in
-    (alpha, hls, dt , (ctx , (SetPlaceVar.empty, SetTmVar.of_list (List.map (fun (_,x,_) -> x) ctxlist)), hole1TM , tp))
+  let (alpha, plPV) = createPlace alpha (SetTmVar.of_list (List.map (fun (_,x,_) -> x)ctxlist)) in
+  let (hole1MV, hole1TM, hls, delta) = createHole dt hls tp ctx plPV in
+    (alpha, hls, delta , (ctx , plPV, hole1TM , tp))
 
 let rec completed delta = Hashtbl.length delta = 0
 

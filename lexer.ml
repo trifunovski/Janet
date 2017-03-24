@@ -516,7 +516,7 @@ and __ocaml_lex_exp_token_rec lexbuf __ocaml_lex_state =
 
   | 5 ->
 # 17 "lexer.mll"
-        ( UNIT )
+        ( ONE )
 # 521 "lexer.ml"
 
   | 6 ->

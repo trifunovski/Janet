@@ -14,7 +14,7 @@ rule exp_token = parse
   | "letfst" { LETFST }
   | "letsnd" { LETSND }
   | "case" { CASE }
-  | "1" { UNIT }
+  | "1" { ONE }
   | "=>" { ARROW }
   | "of" { OF }
   | "<" { LESS }

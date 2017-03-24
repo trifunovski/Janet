@@ -1,16 +1,17 @@
 open Termvar
 open Tmhshtbl
+open Plhshtbl
 open Syntax
-open Placerest
+open Placevar
 open Tmvarrest
 
 type context = Typ.t TmHshtbl.t
 
-type rest = SetPlaceVar.t * SetTmVar.t
+type rest = PlaceVar.t
 
-type form = Sin of rest | Sub of rest * (rest * TermVar.t)
+type alpha = (SetTmVar.t) PlHshtbl.t
 
-type eqs = (form * form) list
+type eqs = Union of (rest * (rest * rest)) | Sub of (rest * (rest * (TermVar.t * rest * TermVar.t)))
 
 type delta = (Term.metaVar , (context * rest * Typ.t)) Hashtbl.t
 

@@ -45,6 +45,7 @@ struct
             | App of t * t
             | TenPair of t * t
             | WithPair of t * t
+            | Letone of t * termVar * t
             | Letten of t * termVar * t
             | Letapp of t * termVar * t
             | Letfst of t * termVar * t
@@ -77,6 +78,8 @@ struct
     | Lam ((x , tp) , tm) when not (TermVar.equal oldV x) -> Lam ((x , tp) , st tm)
     | TenPair (t1 , t2) -> TenPair (st t1 , st t2)
     | WithPair (t1 , t2) -> WithPair (st t1 , st t2)
+    | Letone (t1 , v , t2) when not (TermVar.equal oldV v) -> Letten (st t1 , v , st t2)
+    | Letone (t1 , v , t2) -> Letten (st t1 , v , t2)
     | Letten (t1 , v , t2) when not (TermVar.equal oldV v) -> Letten (st t1 , v , st t2)
     | Letten (t1 , v , t2) -> Letten (st t1 , v , t2)
     | Letapp (t1 , v , t2) when not (TermVar.equal oldV v) -> Letapp (st t1 , v , st t2)
@@ -98,6 +101,9 @@ struct
     | Lam ((x , tp) , tm) ->
         let newx = TermVar.newT (TermVar.toUserString x) in
           Lam ((newx,tp) , swapInTerm newx x tm)
+    | Letone (t1 , v , t2) ->
+        let newv = TermVar.newT (TermVar.toUserString v) in
+          Letone (t1 , newv , swapInTerm newv v t2)
     | Letten (t1 , v , t2) ->
         let newv = TermVar.newT (TermVar.toUserString v) in
           Letten (t1 , newv , swapInTerm newv v t2)
@@ -123,8 +129,9 @@ struct
       | MV (x , _) -> "{ ?" ^ MetaVar.toUserString x ^ " }"
       | Lam ((x , t) , tm) -> "λ" ^ TermVar.toUserString x ^" : "^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
       | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
-      | TenPair (t1 , t2) -> "(" ^ toString t1 ^ " × " ^ toString t2 ^ ")"
+      | TenPair (t1 , t2) -> "(" ^ toString t1 ^ " , " ^ toString t2 ^ ")"
       | WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
+      | Letone (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
       | Letten (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
       | Letapp (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
       | Letfst (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
@@ -146,6 +153,8 @@ struct
       | (TenPair (t1 , t2) , TenPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
       | (WithPair (t1 , t2) , WithPair (t1' , t2') ) -> aequiv t1 t1' && aequiv t2 t2'
       | (Lam ((x , t) , tm) , Lam ((y , t') , tm')) -> aequiv tm (swapInTerm x y tm')
+      | (Letone (t1 , v , t3) , Letone (t1' , v' , t3')) ->
+          aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
       | (Letten (t1 , v , t3) , Letten (t1' , v' , t3')) ->
           aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
       | (Letapp (t1 , v , t3) , Letapp (t1' , v' , t3')) ->
@@ -190,6 +199,16 @@ struct
                             applySub sub' tm
                     else applySub sub tm in
                     into (Lam ((x , tp) , tm'))
+                    
+        | Letone (t1 , v , t2) ->
+            let t1' = applySub sub t1 in
+            let t2' = if TmHshtbl.mem sub v
+                      then let sub' = TmHshtbl.copy sub in
+                           let () = TmHshtbl.remove sub' v in
+                              applySub sub' t2
+                      else applySub sub t2 in
+                      into (Letone (t1', v , t2'))
+
         | Letten (t1 , v , t2) ->
             let t1' = applySub sub t1 in
             let t2' = if TmHshtbl.mem sub v

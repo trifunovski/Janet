@@ -15,12 +15,13 @@
 
 %%
 
-typ:  LPAREN typ TENSOR typ RPAREN { Typ.Tensor ($2 , $4) }
-    | LPAREN typ OR typ RPAREN { Typ.Or ($2 , $4) }
-    | LPAREN typ WITH typ RPAREN { Typ.With ($2 , $4) }
+typ:  typ TENSOR typ  { Typ.Tensor ($1 , $3) }
+    | typ OR typ  { Typ.Or ($1 , $3) }
+    | typ WITH typ  { Typ.With ($1 , $3) }
     | ONE { Typ.One }
-    | LPAREN typ LOLLI typ RPAREN { Typ.Lolli ($2 , $4) }
+    | typ LOLLI typ { Typ.Lolli ($1 , $3) }
     | PROP { Typ.Prop ($1) }
+    | LPAREN typ RPAREN { $2 }
 ;
 
 typEXP: typ EOL { $1 }
