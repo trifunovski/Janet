@@ -95,6 +95,43 @@ let createPlace alpha ctxSet =
   let () = PlHshtbl.add alpha plPV ctxSet in
     (alpha, plPV)
 
+let rec fixEqs2 tot alpha r set = function
+  [] -> alpha
+| eq :: eqs -> (match eq with
+            | Union (a, (a1,a2)) when PlaceVar.equal a r ->
+                    let () = PlHshtbl.replace alpha a1 (SetTmVar.diff (PlHshtbl.find alpha a1) set) in
+                    let () = PlHshtbl.replace alpha a2 (SetTmVar.diff (PlHshtbl.find alpha a2) set) in
+                    let alpha = fixEqs2 tot alpha a1 set tot
+                    in fixEqs2 tot alpha a2 set tot
+            | Sub (a, (a1, (f,a2,x))) when PlaceVar.equal a r ->
+                    let () = PlHshtbl.replace alpha a1 (SetTmVar.diff (PlHshtbl.find alpha a1) set) in
+                    let () = PlHshtbl.replace alpha a2 (SetTmVar.diff (PlHshtbl.find alpha a2) set) in
+                    let alpha = fixEqs2 tot alpha a1 set tot
+                    in fixEqs2 tot alpha a2 set tot
+            | _ -> fixEqs2 tot alpha r set eqs)
+
+let rec fixEqs tot alpha r set = function
+  [] -> alpha
+| eq :: eqs -> (match eq with
+            | Union (a, (a1,a2)) when PlaceVar.equal a1 r ->
+                    let () = PlHshtbl.replace alpha a2 (SetTmVar.diff (PlHshtbl.find alpha a2) set) in
+                    let alpha = fixEqs2 tot alpha a2 set tot
+                    in fixEqs tot alpha a set tot
+            | Union (a, (a1,a2)) when PlaceVar.equal a2 r ->
+                    let () = PlHshtbl.replace alpha a1 (SetTmVar.diff (PlHshtbl.find alpha a1) set) in
+                    let alpha = fixEqs2 tot alpha a1 set tot
+                    in fixEqs tot alpha a set tot
+            | Sub (a, (a1, (f,a2,x))) when PlaceVar.equal a1 r ->
+                    let set = (SetTmVar.diff set (SetTmVar.singleton x)) in
+                    let () = PlHshtbl.replace alpha a2 (SetTmVar.diff (PlHshtbl.find alpha a2) set) in
+                    let alpha = fixEqs2 tot alpha a2 set tot
+                    in fixEqs tot alpha a set tot
+            | Sub (a, (a1, (f,a2,x))) when PlaceVar.equal a2 r ->
+                    let () = PlHshtbl.replace alpha a1 (SetTmVar.diff (PlHshtbl.find alpha a1) set) in
+                    let alpha = fixEqs2 tot alpha a1 set tot
+                    in fixEqs tot alpha a set tot
+            | _ -> fixEqs tot alpha r set eqs)
+
 let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
   match (htp, rule) with
     (Typ.Tensor (t1 , t2), Rtensor) ->
@@ -122,18 +159,11 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
       let newTm = Term.into (Term.Letten (Term.into(Term.TenPair(Term.into(Term.Var x1),Term.into(Term.Var x2))), x, hole1TM)) in
       let newEqs = eqs
       in (alpha, newTm, newEqs, hls, delta)
-  | (htp , Id x) when SetTmVar.mem x (PlHshtbl.find alpha r) && SetTmVar.cardinal (PlHshtbl.find alpha r) = 1 ->
+  | (htp , Id x) when SetTmVar.mem x (PlHshtbl.find alpha r) && Typ.aequiv htp (TmHshtbl.find ctx x) ->
       let (hls , delta) = removeHole hlmv str delta hls in
       let newTm = Term.into (Term.Var (x)) in
       let () = PlHshtbl.replace alpha r (SetTmVar.singleton x) in
-      let () = List.iter (fun eq ->
-                          match eq with
-                          | Union (_, (a1,a2)) when PlaceVar.equal a1 r -> PlHshtbl.replace alpha a2 (SetTmVar.diff (PlHshtbl.find alpha a2) (PlHshtbl.find alpha a1))
-                          | Union (_, (a1,a2)) when PlaceVar.equal a2 r -> PlHshtbl.replace alpha a1 (SetTmVar.diff (PlHshtbl.find alpha a1) (PlHshtbl.find alpha a2))
-                          | Sub (_, (a1, (_,a2,_))) when PlaceVar.equal a1 r -> ()
-                          | Sub (_, (a1, (_,a2,_))) when PlaceVar.equal a2 r -> ()
-                          | _ -> ()
-                          ) eqs
+      let alpha = fixEqs eqs alpha r (SetTmVar.singleton x) eqs
       in (alpha, newTm, eqs, hls, delta)
   | (Typ.Lolli (t1 , t2), Rlolli) ->
     let (hls , delta) = removeHole hlmv str delta hls in
@@ -145,7 +175,25 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
     let (hole1MV, hole1TM, hls, delta) = createHole delta hls t2 holectx p1 in
     let newTm = Term.into (Term.Lam((x,t1),hole1TM))
     in (alpha, newTm, eqs, hls, delta)
-  | (Typ.One , Rone) when SetTmVar.cardinal (PlHshtbl.find alpha r) = 0 ->
+  | (htp, Llolli f) ->
+  (* REMOVE THE f FROM OTHER PLACES RIGHT NOW!!! fixEqs with singleton f *)
+    let (hls , delta) = removeHole hlmv str delta hls in
+    let (Typ.Lolli(t1,t2)) = TmHshtbl.find ctx f in
+    let restCtx = PlHshtbl.find alpha r in
+    let x = TermVar.newT "x" in
+    let restCtx1 = SetTmVar.remove f restCtx in
+    let restCtx2 = SetTmVar.add x restCtx1 in
+    let (alpha , p1) = createPlace alpha restCtx1 in
+    let (alpha , p2) = createPlace alpha restCtx2 in
+    let holectx2 = TmHshtbl.copy ctx in
+    let () = TmHshtbl.add holectx2 x t2 in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp ctx p1 in
+    let (hole2MV, hole2TM, hls, delta) = createHole delta hls htp holectx2 p2 in
+    let newTm = Term.into (Term.Letapp (Term.into(Term.App(Term.into(Term.Var f),hole1TM)), x, hole2TM)) in
+    let newEqs = Sub (r , (p2 , (f , p1 , x))) :: eqs in
+    let alpha = fixEqs newEqs alpha r (SetTmVar.singleton f) newEqs
+    in (alpha, newTm, newEqs, hls, delta)
+  | (Typ.One , Rone) ->
     let (hls , delta) = removeHole hlmv str delta hls in
     let newTm = Term.into (Term.Star)
     in (alpha, newTm, eqs, hls, delta)
