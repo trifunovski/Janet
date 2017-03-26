@@ -127,7 +127,7 @@ struct
     match tm with
       | Var x -> TermVar.toUserString x
       | MV (x , _) -> "{ ?" ^ MetaVar.toUserString x ^ " }"
-      | Lam ((x , t) , tm) -> "λ" ^ TermVar.toUserString x ^" : "^ Typ.toString t ^ ".(" ^ toString tm ^ ")"
+      | Lam ((x , t) , tm) -> "λ" ^ TermVar.toUserString x ^ (* " : "^ Typ.toString t ^ *) ".(" ^ toString tm ^ ")"
       | App (t1 , t2) -> "(" ^ toString t1 ^ ") (" ^ toString t2 ^ ")"
       | TenPair (t1 , t2) -> "(" ^ toString t1 ^ " , " ^ toString t2 ^ ")"
       | WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
@@ -199,7 +199,7 @@ struct
                             applySub sub' tm
                     else applySub sub tm in
                     into (Lam ((x , tp) , tm'))
-                    
+
         | Letone (t1 , v , t2) ->
             let t1' = applySub sub t1 in
             let t2' = if TmHshtbl.mem sub v

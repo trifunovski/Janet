@@ -22,6 +22,8 @@ type seq = context * rest * Term.t * Typ.t
 
 type hole = Term.t
 
+module SS = Set.Make(String)
+
 let holeCtr = ref 0
 let placeCtr = ref 0
 
@@ -49,23 +51,27 @@ let getType () =
     Parser.typEXP Lexer.exp_token tpbuf
 
 
-let possibleRules ctx tp =
+let possibleRules ctx r tp =
+  let s = SS.empty in
   let idtp = ref 0 in
-  let () = TmHshtbl.iter (fun tm tp' -> if Typ.aequiv tp tp' then idtp := !idtp + 1 else ()) ctx in
-  let l = if ((!idtp > 0) && (TmHshtbl.length ctx = 1)) then ["I"] else [] in
-  match tp with
-    | Typ.Prop a ->
-        (match TmHshtbl.fold (fun k v acc -> (k,v)::acc) ctx [] with
-        | [(x,tp)] when Typ.aequiv (Typ.Prop a) tp -> ["Id" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
-        | _ -> ["Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"])
-    | Typ.Tensor (t1 , t2) -> l@["Xright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
-    | Typ.One ->
-        if (TmHshtbl.length ctx = 0) then
-        ["1right"]
-        else []
-    | Typ.Lolli (_ , _) -> l@["-oright" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
-    | Typ.With (_ , _) -> l@["&right" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
-    | Typ.Or (_ , _) -> l@["+right1" ; "+right2" ; "Xleft" ; "-oleft"; "&left1"; "&left2" ; "+left"; "1left"]
+  let s = SetTmVar.fold (fun tm s' ->
+            let s'' = if Typ.aequiv tp (TmHshtbl.find ctx tm) then SS.add ("Id") s' else s' in
+            match TmHshtbl.find ctx tm with
+              | Typ.Tensor (t1 , t2) -> SS.add "Xleft" s''
+              | Typ.One -> SS.add "1left" s''
+              | Typ.Lolli (_ , _) -> SS.add "-oleft" s''
+              | Typ.With (_ , _) -> SS.add "&left1" (SS.add "&left2" s'')
+              | Typ.Or (_ , _) -> SS.add "+left" s''
+              | _ -> s''
+            ) r s in
+  let s = match tp with
+    | Typ.Tensor (t1 , t2) -> SS.add "Xright" s
+    | Typ.One -> SS.add "1right" s
+    | Typ.Lolli (_ , _) -> SS.add "-oright" s
+    | Typ.With (_ , _) -> SS.add "&right" s
+    | Typ.Or (_ , _) -> SS.add "+right1" (SS.add "+right2" s)
+    | _ -> s in
+    SS.fold (fun x l -> x :: l) s []
 
 
 let rec listToString = function
@@ -309,7 +315,7 @@ let rec removeDups = function
 let pick_termvar vars =
   let () = print_endline ("Select the variable to which to apply the rule:") in
   let var = input_line stdin in
-  let () = print_endline ("Printing current vars: " ^ listToString (List.map (fun k -> TermVar.toString k) vars)) in
+(*  let () = print_endline ("Printing current vars: " ^ listToString (List.map (fun k -> TermVar.toString k) vars)) in *)
   let opt = List.fold_left (fun prev v -> if TermVar.toString v = var then Some v else prev) None vars in
   match opt with
     Some v -> v
@@ -338,8 +344,8 @@ let rec analyzeHole alpha hls delta (ctx,rest,tm,tp) eqs str =
   let hlmv = Hashtbl.find hls str in
   let (hctx, r, htp) = Hashtbl.find delta hlmv in
   let l = SetTmVar.fold (fun k s -> k::s) (PlHshtbl.find alpha r) [] in
-  let () = print_endline ("You can use the following variables: " ^ (listToString (List.map (fun k -> TermVar.toString k) l))) in
-  let () = print_endline ("You can use the following rules: "^ listToString (possibleRules hctx htp)) in
+  let () = print_endline ("You can use the following variables: " ^ (listToString (List.map (fun k -> (TermVar.toString k) ^ " : " ^ (Typ.toString(TmHshtbl.find hctx k))) l))) in
+  let () = print_endline ("You can use the following rules: "^ listToString (possibleRules hctx (PlHshtbl.find alpha r) htp)) in
   let rule = pick_rule l in
   let (newAlpha, newTm, neweq, newhls, newdelta) = createTerm alpha rule hlmv str hctx r htp eqs delta hls in
     (newAlpha, newhls, newdelta, (ctx,rest,recurInTerm tm hlmv newTm ,tp), neweq)
@@ -361,10 +367,16 @@ let startSeq ctx ctxlist tp =
 
 let rec completed delta = Hashtbl.length delta = 0
 
-let rec loop (alpha,hls,delta,seq,eqs) =
-  let () = print_endline (seqToString seq) in
-  if completed delta then let () = print_endline("We are done!") in (alpha,hls,delta,seq,eqs)
-  else loop(runStep alpha hls delta seq eqs)
+let rec loop (alpha,hls,delta,(ctx,rest,tm,tp),eqs) =
+  let _ = Sys.command "clear" in
+  let () = print_endline (seqToString (ctx,rest,tm,tp)) in
+  if completed delta
+  then
+      let () = if SetTmVar.cardinal (PlHshtbl.find alpha rest) = 0
+               then print_endline("We are done!")
+               else print_endline("We didn't use up all resources...")
+      in (alpha,hls,delta,(ctx,rest,tm,tp),eqs)
+  else loop(runStep alpha hls delta (ctx,rest,tm,tp) eqs)
 
 let main () =
   let (ctx, ctxlist) = getContext () in
@@ -373,28 +385,6 @@ let main () =
 in
   loop (alpha, hls, dlt, seq, [])
 
-
-  (*
-
-  let rec applyToTerm holeTM f tm =
-    match Term.out tm with
-    | Term.MV (u , sub') when Term.aequiv holeTM tm -> f tm
-    | Term.Case (z , (x , t1) , (y , t2)) ->
-          Term.into (Term.Case (z, (x ,applyToHoleInTerm holeTM f t1) , (y ,applyToHoleInTerm holeTM f t2)))
-    | Term.Lam ((x , tp) , tm') ->
-                Term.into (Term.Lam ((x , tp) , applyToHoleInTerm holeTM f tm'))
-    | Term.Letten (t1 , v , t2) ->
-                  Term.into (Term.Letten (applyToHoleInTerm holeTM f t1, v ,applyToHoleInTerm holeTM f t2))
-    | Term.Letapp (t1 , v , t2) ->
-                  Term.into (Term.Letapp (applyToHoleInTerm holeTM f t1, v ,applyToHoleInTerm holeTM f t2))
-    | Term.Letfst (t1 , v , t2) ->
-                  Term.into (Term.Letfst (applyToHoleInTerm holeTM f t1, v ,applyToHoleInTerm holeTM f t2))
-    | Term.Letsnd (t1 , v , t2) -> Term.into (Term.Letsnd (applyToHoleInTerm holeTM f t1, v ,applyToHoleInTerm holeTM f t2))
-    | Term.App (t1 , t2) -> Term.into (Term.App (applyToHoleInTerm holeTM f sub t1, applyToHoleInTerm holeTM f sub t2))
-    | Term.TenPair (t1 , t2) -> Term.into (Term.TenPair (applyToHoleInTerm holeTM f sub t1 , applyToHoleInTerm holeTM f sub t2))
-    | Term.WithPair (t1 , t2) -> Term.into (Term.WithPair (applyToHoleInTerm holeTM f t1 , applyToHoleInTerm holeTM f sub t2))
-    | Term.Inl tm -> Term.into (Term.Inl (applyToHoleInTerm holeTM f tm))
-    | Term.Inr tm -> Term.into (Term.Inr (applyToHoleInTerm holeTM f tm))
-    | _ -> tm
-
-  *)
+let run () =
+  let _ = Sys.command "clear" in
+  let res = main () in ()
