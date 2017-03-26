@@ -11,7 +11,7 @@ type rest = PlaceVar.t
 
 type alpha = (SetTmVar.t) PlHshtbl.t
 
-type eqs = Union of (rest * (rest * rest)) | Sub of (rest * (rest * (TermVar.t * rest * TermVar.t)))
+type eqs = Union of (rest * (rest * rest)) | Sub of (rest * (rest * (TermVar.t * rest * TermVar.t))) | Link of (rest * (rest * (SetTmVar.t * SetTmVar.t)))
 
 type delta = (Term.metaVar , (context * rest * Typ.t)) Hashtbl.t
 
