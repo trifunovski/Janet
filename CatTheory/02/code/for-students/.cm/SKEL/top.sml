@@ -1,2 +1,0 @@
-Skeleton 5
-d3aгўTOP"h0aеўTopFun"i2aдўE"gp1c"EXP"f7яd"Typ"Cd"List"d"Stream"d"TextIO"d"Input"d"Lexer"Njh4ad"Parse"jи±бязр±яgp1e"ParseFun"ad"Print"jяЃ'gp1e"PrintFun"ad"Check"jяЃ'gp1e"CheckFun"ad"Step"jяЃ'gp1e"StepFun"зр±яad"Top"jjh1aяgp1d"NamedExp"gp1яяѓ
