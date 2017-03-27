@@ -261,10 +261,13 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
     in (alpha, newTm, newEqs, hls, delta)
   | (Typ.With(t1,t2), Rwith) ->
     let (hls , delta) = removeHole hlmv str delta hls in
-    let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx r in
-    let (hole2MV, hole2TM, hls, delta) = createHole delta hls t2 ctx r in
+    let restCtx = PlHshtbl.find alpha r in
+    let (alpha , p1) = createPlace alpha restCtx in
+    let (alpha , p2) = createPlace alpha restCtx in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx p1 in
+    let (hole2MV, hole2TM, hls, delta) = createHole delta hls t2 ctx p2 in
     let newTm = Term.into (Term.WithPair (hole1TM, hole2TM)) in
-    let newEqs = eqs
+    let newEqs = Link (r , (p1 , (SetTmVar.empty , SetTmVar.empty))) :: Link (r , (p2 , (SetTmVar.empty, SetTmVar.empty))) ::eqs
     in (alpha, newTm, newEqs, hls, delta)
   | (htp , Lwith1 z) ->
     let (hls , delta) = removeHole hlmv str delta hls in
@@ -365,7 +368,10 @@ let rec runStep alpha hls delta drv eqs =
   let () = print_endline "Enter the desired hole #: " in
   let str = input_line stdin in
   match Hashtbl.mem hls str with
-    true -> (print_endline("hole "^ str ^ " was selected."); analyzeHole alpha hls delta drv eqs str)
+    true ->
+        let hlmv = Hashtbl.find hls str in
+        let (hctx, r, htp) = Hashtbl.find delta hlmv in
+        (print_endline("Hole "^ str ^ " was selected, with type "^ Typ.toString htp ); analyzeHole alpha hls delta drv eqs str)
   | false -> (print_endline ("You have entered a non-existing hole. Please try again."); (runStep alpha hls delta drv eqs))
 
 let startSeq ctx ctxlist tp =
@@ -383,9 +389,10 @@ let rec loop (alpha,hls,delta,(ctx,rest,tm,tp),eqs) =
   let () = print_endline (seqToString (ctx,rest,tm,tp)) in
   if completed delta
   then
-      let () = if SetTmVar.cardinal (PlHshtbl.find alpha rest) = 0
+      let () = if (PlHshtbl.fold (fun k v r -> SetTmVar.cardinal v + r) alpha 0) = 0
                then print_endline("We are done!")
-               else print_endline("We didn't use up all resources..." ^ (SetTmVar.fold (fun tm s -> (TermVar.toString tm) ^ ", " ^ s) (PlHshtbl.find alpha rest) "") )
+               else print_endline("We didn't use up all resources...") (* ^ (PlHshtbl.fold (fun k v r ->
+                  (SetTmVar.fold (fun tm s -> (TermVar.toString tm) ^ ", " ^ s) v ("..from "^ PlaceVar.toString k ^"\n")) alpha "") )) *)
       in (alpha,hls,delta,(ctx,rest,tm,tp),eqs)
   else loop(runStep alpha hls delta (ctx,rest,tm,tp) eqs)
 
