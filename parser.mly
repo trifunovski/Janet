@@ -50,7 +50,7 @@ term:
     | CASE var OF INL LPAREN var RPAREN ARROW term COMMA INR LPAREN var RPAREN ARROW term
         { (PCase ($2 , ($6 , $9) , ($13 , $16)))}
     | LETTEN term BE var IN term { (PLetten ($2 , $4 , $6)) }
-    | LETAPP term BE var IN term { (PLetapp ($2 , $4 , $6)) }
+    | LETAPP term BE var term IN term { (PLetapp ($2 , ($4 , $5) , $7)) }
     | LETFST term BE var IN term { (PLetfst ($2 , $4 , $6)) }
     | LETSND term BE var IN term { (PLetsnd ($2 , $4 , $6)) }
     | LPAREN term term RPAREN { (PApp ($2 , $3)) }

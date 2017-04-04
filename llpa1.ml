@@ -17,6 +17,7 @@ type rule =
      | Id of TermVar.t | Rtensor | Rplus1 | Rplus2 | Rwith | Rone | Rlolli
      | Llolli of TermVar.t | Ltensor of TermVar.t | Lwith1 of TermVar.t
      | Lwith2 of TermVar.t | Lplus of TermVar.t | Lone of TermVar.t
+     | MV of MetaVar.t
 
 type seq = context * rest * Term.t * Typ.t
 
@@ -207,9 +208,9 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
     let (alpha , p2) = createPlace alpha restCtx2 in
     let holectx2 = TmHshtbl.copy ctx in
     let () = TmHshtbl.add holectx2 x t2 in
-    let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp ctx p1 in
+    let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx p1 in
     let (hole2MV, hole2TM, hls, delta) = createHole delta hls htp holectx2 p2 in
-    let newTm = Term.into (Term.Letapp (Term.into(Term.App(Term.into(Term.Var f),hole1TM)), x, hole2TM)) in
+    let newTm = Term.into (Term.Letapp (Term.into(Term.Var x), (f , hole1TM), hole2TM)) in
     let newEqs = Sub (r , (p2 , (f , p1 , x))) :: eqs in
     let alpha = fixEqs newEqs alpha r (SetTmVar.singleton f) newEqs
     in (alpha, newTm, newEqs, hls, delta)
@@ -321,7 +322,7 @@ let rec recurInTerm t mv newTerm =
   | Term.WithPair (t1 , t2) -> Term.into (Term.WithPair (ri t1, ri t2))
   | Term.Letone (t1 , v , t2) -> Term.into (Term.Letone (ri t1, v , ri t2))
   | Term.Letten (t1 , v , t2) -> Term.into (Term.Letten (ri t1, v , ri t2))
-  | Term.Letapp (t1 , v , t2) -> Term.into (Term.Letapp (ri t1, v , ri t2))
+  | Term.Letapp (t1 , (v , t') , t2) -> Term.into (Term.Letapp (ri t1, (v , ri t') , ri t2))
   | Term.Letfst (t1 , v , t2) -> Term.into (Term.Letfst (ri t1, v , ri t2))
   | Term.Letsnd (t1 , v , t2) -> Term.into (Term.Letsnd (ri t1, v , ri t2))
   | Term.Inl t' -> Term.into (Term.Inl (ri t'))

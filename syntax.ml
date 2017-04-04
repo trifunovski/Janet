@@ -47,7 +47,7 @@ struct
             | WithPair of t * t
             | Letone of t * termVar * t
             | Letten of t * termVar * t
-            | Letapp of t * termVar * t
+            | Letapp of t * (termVar * t) * t
             | Letfst of t * termVar * t
             | Letsnd of t * termVar * t
             | Inl of t
@@ -82,8 +82,8 @@ struct
     | Letone (t1 , v , t2) -> Letten (st t1 , v , t2)
     | Letten (t1 , v , t2) when not (TermVar.equal oldV v) -> Letten (st t1 , v , st t2)
     | Letten (t1 , v , t2) -> Letten (st t1 , v , t2)
-    | Letapp (t1 , v , t2) when not (TermVar.equal oldV v) -> Letapp (st t1 , v , st t2)
-    | Letapp (t1 , v , t2) -> Letapp (st t1 , v , t2)
+    | Letapp (t1 , (v , t') , t2) when not (TermVar.equal oldV v) -> Letapp (st t1 , (v , st t') , st t2)
+    | Letapp (t1 , (v , t') , t2) -> Letapp (st t1 , (v , t') , t2)
     | Letfst (t1 , v , t2) when not (TermVar.equal oldV v) -> Letfst (st t1 , v , st t2)
     | Letfst (t1 , v , t2) -> Letfst (st t1 , v , t2)
     | Letsnd (t1 , v , t2) when not (TermVar.equal oldV v) -> Letsnd (st t1 , v , st t2)
@@ -107,9 +107,9 @@ struct
     | Letten (t1 , v , t2) ->
         let newv = TermVar.newT (TermVar.toUserString v) in
           Letten (t1 , newv , swapInTerm newv v t2)
-    | Letapp (t1 , v , t2) ->
+    | Letapp (t1 , (v , t') , t2) ->
         let newv = TermVar.newT (TermVar.toUserString v) in
-          Letapp (t1 , newv , swapInTerm newv v t2)
+          Letapp (t1 , (newv , swapInTerm newv v t') , swapInTerm newv v t2)
     | Letfst (t1 , v , t2) ->
         let newv = TermVar.newT (TermVar.toUserString v) in
           Letfst (t1 , newv , swapInTerm newv v t2)
@@ -133,7 +133,7 @@ struct
       | WithPair (t1 , t2) -> "<" ^ toString t1 ^ " , " ^ toString t2 ^ ">"
       | Letone (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
       | Letten (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
-      | Letapp (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
+      | Letapp (t1 , (v , t') , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ "(" ^ toString t' ^ ")" ^ " in " ^ toString t2
       | Letfst (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
       | Letsnd (t1 , v , t2) -> "let " ^ toString t1 ^ " be " ^ TermVar.toUserString v ^ " in " ^ toString t2
       | Inl t' -> "inl(" ^ toString t' ^ ")"
@@ -157,8 +157,8 @@ struct
           aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
       | (Letten (t1 , v , t3) , Letten (t1' , v' , t3')) ->
           aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
-      | (Letapp (t1 , v , t3) , Letapp (t1' , v' , t3')) ->
-          aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
+      | (Letapp (t1 , (v , t2) , t3) , Letapp (t1' , (v' , t2') , t3')) ->
+          aequiv t1 t1' && aequiv t2 (swapInTerm v v' t2') && aequiv t3 (swapInTerm v v' t3')
       | (Letfst (t1 , v , t3) , Letfst (t1' , v' , t3')) ->
           aequiv t1 t1' && aequiv t3 (swapInTerm v v' t3')
       | (Letsnd (t1 , v , t3) , Letsnd (t1' , v' , t3')) ->
@@ -218,14 +218,19 @@ struct
                       else applySub sub t2 in
                       into (Letten (t1', v , t2'))
 
-        | Letapp (t1 , v , t2) ->
+        | Letapp (t1 , (v , t) , t2) ->
             let t1' = applySub sub t1 in
+            let t' = if TmHshtbl.mem sub v
+                      then let sub' = TmHshtbl.copy sub in
+                           let () = TmHshtbl.remove sub' v in
+                              applySub sub' t
+                      else applySub sub t in
             let t2' = if TmHshtbl.mem sub v
                       then let sub' = TmHshtbl.copy sub in
                            let () = TmHshtbl.remove sub' v in
                               applySub sub' t2
                       else applySub sub t2 in
-                      into (Letapp (t1', v , t2'))
+                      into (Letapp (t1', (v , t') , t2'))
 
         | Letfst (t1 , v , t2) ->
             let t1' = applySub sub t1 in
@@ -244,7 +249,6 @@ struct
                               applySub sub' t2
                       else applySub sub t2 in
                       into (Letsnd (t1', v , t2'))
-
         | App (t1 , t2) -> into (App (applySub sub t1, applySub sub t2))
         | TenPair (t1 , t2) -> into (TenPair (applySub sub t1 , applySub sub t2))
         | WithPair (t1 , t2) -> into (WithPair (applySub sub t1 , applySub sub t2))

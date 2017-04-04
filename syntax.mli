@@ -31,7 +31,7 @@ module Term : sig
             | WithPair of t * t
             | Letone of t * termVar * t
             | Letten of t * termVar * t
-            | Letapp of t * termVar * t
+            | Letapp of t * (termVar * t) * t
             | Letfst of t * termVar * t
             | Letsnd of t * termVar * t
             | Inl of t

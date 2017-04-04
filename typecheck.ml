@@ -13,7 +13,10 @@ type rest = PlaceVar.t
 
 type alpha = (SetTmVar.t) PlHshtbl.t
 
-type eqs = Union of (rest * (rest * rest)) | Sub of (rest * (rest * (TermVar.t * rest * TermVar.t))) | Link of (rest * (rest * (SetTmVar.t * SetTmVar.t)))
+type eqs = Union of (rest * (rest * rest))
+         | Sub of (rest * (rest * (TermVar.t * rest * TermVar.t)))
+         | Link of (rest * (rest * (SetTmVar.t * SetTmVar.t)))
+         | MV of (rest * (rest * (rest * TermVar.t Term.sub * TermVar.t)))
 
 type delta = (Term.metaVar , (context * rest * Typ.t)) Hashtbl.t
 
@@ -68,14 +71,14 @@ let rec fixTerm links tm =
         let () = addHT links x tmvar in
           Term.into (Term.Letten (tm1 , tmvar , fixTerm links pr2))
     )
-  | Parseterm.PLetapp (pr1 , x , pr2) ->
+  | Parseterm.PLetapp (pr1 , (x , pr) , pr2) ->
     (match find links x with
-      | Some tmvar -> Term.into (Term.Letapp (fixTerm links pr1 , tmvar , fixTerm links pr2))
+      | Some tmvar -> Term.into (Term.Letapp (fixTerm links pr1 , (tmvar, fixTerm links pr) , fixTerm links pr2))
       | None ->
         let tm1 = fixTerm links pr1 in
         let tmvar = TermVar.newT x in
         let () = addHT links x tmvar in
-          Term.into (Term.Letapp (tm1 , tmvar , fixTerm links pr2))
+          Term.into (Term.Letapp (tm1 , (tmvar , fixTerm links pr) , fixTerm links pr2))
     )
   | Parseterm.PLetfst (pr1 , x , pr2) ->
     (match find links x with
@@ -226,7 +229,7 @@ let typechecker dlt ctx tm tp =
             | (Some rest1 , Some rest2) when ctxEquiv rest1 rest2 -> Some rest1
             | _ -> None)
         | _ -> None)
-    | (Term.Letapp (ft , x , u) , tp) ->
+  (*  | (Term.Letapp (ft , (x , t) , u) , tp) ->
       (match Term.out ft with
         | Term.App (ftm , t) ->
           (match Term.out ftm with
@@ -241,7 +244,7 @@ let typechecker dlt ctx tm tp =
                     | _ -> None)
                 | _ -> None)
             | _ -> None)
-        | _ -> None)
+        | _ -> None) *)
     | _ -> None
     (*
     | (Term.MV (mv , sub) , tp) when (Hashtbl.mem dlt mv && Typ.aequiv tp (snd (Hashtbl.find dlt mv))) -> Some ctx *)

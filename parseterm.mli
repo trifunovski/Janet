@@ -6,7 +6,7 @@ type pr = | PVar of string
           | PTenPair of pr * pr
           | PWithPair of pr * pr
           | PLetten of pr * string * pr
-          | PLetapp of pr * string * pr
+          | PLetapp of pr * (string * pr) * pr
           | PLetfst of pr * string * pr
           | PLetsnd of pr * string * pr
           | PInl of pr
