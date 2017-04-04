@@ -1,0 +1,29 @@
+typecheck:
+	ocamlc -c vars/termvar.mli
+	ocamlc -c vars/termvar.ml
+	ocamlc -c vars/metavar.mli
+	ocamlc -c vars/metavar.ml
+	ocamlc -c vars/placevar.mli
+	ocamlc -c vars/placevar.ml
+	ocamlc -c tables/tmhshtbl.mli
+	ocamlc -c tables/tmhshtbl.ml
+	ocamlc -c tables/plhshtbl.mli
+	ocamlc -c tables/plhshtbl.ml
+	ocamlc -c sets/tmvarrest.mli
+	ocamlc -c sets/tmvarrest.ml
+	ocamlc -c sets/placerest.mli
+	ocamlc -c sets/placerest.ml
+	ocamlc -c backbone/syntax.mli
+	ocamlc -c backbone/syntax.ml
+	ocamlc -c lexandparse/parseterm.mli
+	ocamlc -c lexandparse/parseterm.ml
+	ocamllex lexandparse/lexer.mll
+	ocamlyacc lexandparse/parser.mly
+	ocamlc -c lexandparse/parser.mli
+	ocamlc -c lexandparse/lexer.ml
+	ocamlc -c lexandparse/parser.ml
+	ocamlc -c tpcheck/typecheck.mli
+	ocamlc -c tpcheck/typecheck.ml
+	ocamlc -c main/llpa1.mli
+	rlwrap ocaml vars/termvar.cmo vars/metavar.cmo vars/placevar.cmo tables/tmhshtbl.cmo tables/plhshtbl.cmo backbone/syntax.cmo sets/tmvarrest.cmo sets/placerest.cmo lexandparse/lexer.cmo lexandparse/parser.cmo tpcheck/typecheck.cmo
+

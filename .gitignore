@@ -1,9 +1,3 @@
-typecheck
-parser.ml
-parser.mli
 .DS_Store
-day1
-*.cmo
-*.cmi
-*.o
-*.cmx
+_build
+llpa1*
