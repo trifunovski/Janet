@@ -151,7 +151,21 @@ let rec fixEqs tot alpha r set = function
 
 let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
   match (htp, rule) with
-    (Typ.Tensor (t1 , t2), Rtensor) ->
+    (htp, MV u) ->
+      let a = r in
+      let (hls , delta) = removeHole hlmv str delta hls in
+      let (gamma0 , alpha0 , atp) = Hashtbl.find delta u in
+      let restCtx = PlHshtbl.find alpha a in
+      let z = TermVar.newT "z" in
+      let restCtx = SetTmVar.add z restCtx in
+      let (alpha , a') = createPlace alpha restCtx in
+      let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp ctx a' in
+      let (hole0MV, hole0TM, hls, delta) = createHole delta hls atp gamma0 a in
+      let newTm = Term.into (Term.Letmv (z , hole0TM , hole1TM)) in
+      let newEqs = Mv (a , (a' , (alpha0 , makeIdSub gamma0 , z))) :: eqs in
+      let alpha = alpha (* fixEqs newEqs alpha r (SetTmVar.singleton x) newEqs *)
+      in (alpha, newTm, newEqs, hls, delta)
+  | (Typ.Tensor (t1 , t2), Rtensor) ->
       let (hls , delta) = removeHole hlmv str delta hls in
       let restCtx = PlHshtbl.find alpha r in
       let (alpha , p1) = createPlace alpha restCtx in
@@ -174,7 +188,7 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
       let () = TmHshtbl.add holectx x1 t1 in
       let () = TmHshtbl.add holectx x2 t2 in
       let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp holectx p1 in
-      let newTm = Term.into (Term.Letten (Term.into(Term.TenPair(Term.into(Term.Var x1),Term.into(Term.Var x2))), x, hole1TM)) in
+      let newTm = Term.into (Term.Letten (Term.into(Term.TenPair(Term.into(Term.Var x1),Term.into(Term.Var x2))), Term.into(Term.Var x), hole1TM)) in
       let newEqs = Link (r , (p1 , (SetTmVar.singleton (x) , SetTmVar.add x1 (SetTmVar.singleton x2)))) :: eqs in
       let alpha = fixEqs newEqs alpha r (SetTmVar.singleton x) newEqs
       in (alpha, newTm, newEqs, hls, delta)
@@ -198,7 +212,7 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
         let restCtx = SetTmVar.remove z restCtx in
         let (alpha , p1) = createPlace alpha restCtx in
         let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp ctx p1 in
-        let newTm = Term.into (Term.Letone (Term.into(Term.Star), z, hole1TM)) in
+        let newTm = Term.into (Term.Letone (Term.into(Term.Star), Term.into (Term.Var z), hole1TM)) in
         let newEqs = Link (r , (p1, (SetTmVar.singleton z , SetTmVar.empty))) :: eqs in
         let alpha = fixEqs newEqs alpha r (SetTmVar.singleton z) newEqs
         in (alpha, newTm, newEqs, hls, delta)
@@ -228,7 +242,7 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
     let () = TmHshtbl.add holectx2 x t2 in
     let (hole1MV, hole1TM, hls, delta) = createHole delta hls t1 ctx p1 in
     let (hole2MV, hole2TM, hls, delta) = createHole delta hls htp holectx2 p2 in
-    let newTm = Term.into (Term.Letapp (Term.into(Term.Var x), (f , hole1TM), hole2TM)) in
+    let newTm = Term.into (Term.Letapp (x, Term.into (Term.App (Term.into (Term.Var f) , hole1TM)) , hole2TM)) in
     let newEqs = Sub (r , (p2 , (f , p1 , x))) :: eqs in
     let alpha = fixEqs newEqs alpha r (SetTmVar.singleton f) newEqs
     in (alpha, newTm, newEqs, hls, delta)
@@ -291,7 +305,7 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
     let holectx = TmHshtbl.copy ctx in
     let () = TmHshtbl.add holectx x t1 in
     let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp holectx p1 in
-    let newTm = Term.into (Term.Letfst (Term.into(Term.WithPair(Term.into(Term.Var x),Term.into(Term.Var dummy))), z, hole1TM)) in
+    let newTm = Term.into (Term.Letfst (Term.into(Term.WithPair(Term.into(Term.Var x),Term.into(Term.Var dummy))), Term.into (Term.Var z), hole1TM)) in
     let newEqs = Link (r , (p1 , (SetTmVar.singleton z , SetTmVar.singleton x))) :: eqs in
     let alpha = fixEqs newEqs alpha r (SetTmVar.singleton z) newEqs
     in (alpha, newTm, newEqs, hls, delta)
@@ -307,7 +321,7 @@ let rec createTerm alpha rule hlmv str ctx r htp eqs delta hls =
     let holectx = TmHshtbl.copy ctx in
     let () = TmHshtbl.add holectx x t2 in
     let (hole1MV, hole1TM, hls, delta) = createHole delta hls htp holectx p1 in
-    let newTm = Term.into (Term.Letsnd (Term.into(Term.WithPair(Term.into(Term.Var dummy),Term.into(Term.Var x))), z, hole1TM)) in
+    let newTm = Term.into (Term.Letsnd (Term.into(Term.WithPair(Term.into(Term.Var dummy),Term.into(Term.Var x))), Term.into (Term.Var z), hole1TM)) in
     let newEqs = Link (r , (p1 , (SetTmVar.singleton z , SetTmVar.singleton x))) :: eqs in
     let alpha = fixEqs newEqs alpha r (SetTmVar.singleton z) newEqs
     in (alpha, newTm, newEqs, hls, delta)
@@ -322,11 +336,12 @@ let rec recurInTerm t mv newTerm =
   | Term.App (t1 , t2) -> Term.into (Term.App (ri t1 , ri t2))
   | Term.TenPair (t1 , t2) -> Term.into (Term.TenPair (ri t1, ri t2))
   | Term.WithPair (t1 , t2) -> Term.into (Term.WithPair (ri t1, ri t2))
-  | Term.Letone (t1 , v , t2) -> Term.into (Term.Letone (ri t1, v , ri t2))
-  | Term.Letten (t1 , v , t2) -> Term.into (Term.Letten (ri t1, v , ri t2))
-  | Term.Letapp (t1 , (v , t') , t2) -> Term.into (Term.Letapp (ri t1, (v , ri t') , ri t2))
-  | Term.Letfst (t1 , v , t2) -> Term.into (Term.Letfst (ri t1, v , ri t2))
-  | Term.Letsnd (t1 , v , t2) -> Term.into (Term.Letsnd (ri t1, v , ri t2))
+  | Term.Letone (t1 , t2 , t3) -> Term.into (Term.Letone (t1, t2 , ri t3))
+  | Term.Letten (t1 , t2 , t3) -> Term.into (Term.Letten (t1, t2 , ri t3))
+  | Term.Letapp (f , t2 , t3) -> Term.into (Term.Letapp (f, ri t2 , ri t3))
+  | Term.Letfst (t1 , t2 , t3) -> Term.into (Term.Letfst (t1, t2 , ri t3))
+  | Term.Letsnd (t1 , t2 , t3) -> Term.into (Term.Letsnd (t1, t2 , ri t3))
+  | Term.Letmv (z , t2 , t3) -> Term.into (Term.Letmv (z, ri t2, ri t3))
   | Term.Inl t' -> Term.into (Term.Inl (ri t'))
   | Term.Inr t' -> Term.into (Term.Inr (ri t'))
   | Term.Case (z , (x , t1 ) , (y , t2)) -> Term.into (Term.Case (z , (x , ri t1) , (y , ri t2)))
@@ -349,11 +364,20 @@ let pick_termvar vars =
     Some v -> v
   | None -> raise UnmatchedVariable
 
-let pick_rule vars =
+let pick_metavar mvs =
+  let () = print_endline ("Select the meta-variable to which to apply the rule:") in
+  let var = input_line stdin in
+  let opt = List.fold_left (fun prev v -> if MetaVar.toString v = var then Some v else prev) None mvs in
+  match opt with
+    Some v -> v
+  | None -> raise UnmatchedVariable
+
+let pick_rule vars mvs =
   let () = print_endline ("Select a rule to be applied:") in
   let rule = input_line stdin in
   match rule with
     "Id" -> Id (pick_termvar (vars))
+  | "MV" -> MV (pick_metavar (mvs))
   | "Xleft" -> Ltensor (pick_termvar (vars))
   | "-oleft" -> Llolli (pick_termvar (vars))
   | "&left1" -> Lwith1 (pick_termvar (vars))
@@ -371,10 +395,12 @@ let pick_rule vars =
 let rec analyzeHole alpha hls delta (ctx,rest,tm,tp) eqs str =
   let hlmv = Hashtbl.find hls str in
   let (hctx, r, htp) = Hashtbl.find delta hlmv in
+  let mvs = Hashtbl.fold (fun k v l -> k::l) delta [] in
   let l = SetTmVar.fold (fun k s -> k::s) (PlHshtbl.find alpha r) [] in
   let () = print_endline ("You can use the following variables: " ^ (listToString (List.map (fun k -> (TermVar.toString k) ^ " : " ^ (Typ.toString(TmHshtbl.find hctx k))) l))) in
-  let () = print_endline ("You can use the following rules: "^ listToString (possibleRules hctx (PlHshtbl.find alpha r) htp)) in
-  let rule = pick_rule l in
+  let () = print_endline ("You can use the following meta-variables: " ^ (listToString (List.map (fun k -> (MetaVar.toString k)) mvs))) in
+  let () = print_endline ("You can use the following rules: "^ (listToString ("MV"::(possibleRules hctx (PlHshtbl.find alpha r) htp)))) in
+  let rule = pick_rule l mvs in
   let (newAlpha, newTm, neweq, newhls, newdelta) = createTerm alpha rule hlmv str hctx r htp eqs delta hls in
     (newAlpha, newhls, newdelta, (ctx,rest,recurInTerm tm hlmv newTm ,tp), neweq)
 
@@ -410,7 +436,7 @@ let rec checkEqs alpha = function
   | Link (a , (a' , (x , z))) :: eqs -> SetTmVar.cardinal (SetTmVar.inter (PlHshtbl.find alpha a) (SetTmVar.union (SetTmVar.diff
                                               (PlHshtbl.find alpha a') z) x)) = SetTmVar.cardinal (PlHshtbl.find alpha a)
                                     && checkEqs alpha eqs
-  | MV (a , (a' , (a0 , gam , x))) :: eqs -> checkEqs alpha eqs
+  | Mv (a , (a' , (a0 , gam , x))) :: eqs -> checkEqs alpha eqs
 
 let rec loop ((alpha,hls,delta,(ctx,rest,tm,tp),eqs), startRes) =
   let _ = Sys.command "clear" in

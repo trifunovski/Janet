@@ -9,6 +9,8 @@ open Tmvarrest
 
 type context = Typ.t TmHshtbl.t
 
+exception Unimplemented
+
 type rest = PlaceVar.t
 
 type alpha = (SetTmVar.t) PlHshtbl.t
@@ -16,7 +18,7 @@ type alpha = (SetTmVar.t) PlHshtbl.t
 type eqs = Union of (rest * (rest * rest))
          | Sub of (rest * (rest * (TermVar.t * rest * TermVar.t)))
          | Link of (rest * (rest * (SetTmVar.t * SetTmVar.t)))
-         | MV of (rest * (rest * (rest * TermVar.t Term.sub * TermVar.t)))
+         | Mv of (rest * (rest * (rest * Term.t Term.sub * TermVar.t)))
 
 type delta = (Term.metaVar , (context * rest * Typ.t)) Hashtbl.t
 
@@ -48,7 +50,8 @@ let printCtxTerm tm tp = print_string ((TermVar.toUserString tm) ^ " : " ^ (Typ.
 
 let printCtx ctx = TmHshtbl.iter (printCtxTerm) ctx
 
-let rec fixTerm links tm =
+let rec fixTerm links tm = raise Unimplemented
+(*
   match tm with
   | Parseterm.PVar x -> (match find links x with
                 | Some tmvar -> Term.into (Term.Var tmvar)
@@ -157,9 +160,11 @@ let rec fixTerm links tm =
   | Parseterm.PInl (pr) -> Term.into (Term.Inl (fixTerm links pr))
   | Parseterm.PInr (pr) -> Term.into (Term.Inr (fixTerm links pr))
   | Parseterm.PStar -> Term.into (Term.Star)
+*)
 
+let typechecker dlt ctx tm tp = raise Unimplemented
 
-let typechecker dlt ctx tm tp =
+(*
   let workingctx = TmHshtbl.copy ctx in
   let rec typecheck ctx tm tp =
     match (Term.out tm , tp) with
@@ -252,6 +257,8 @@ let typechecker dlt ctx tm tp =
   match typecheck workingctx tm tp with
     | Some rest_ctx -> if TmHshtbl.length rest_ctx = 0 then true else false
     | _ -> false
+*)
+
 
 let rec map f = function
   | [] -> []

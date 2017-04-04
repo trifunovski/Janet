@@ -5,7 +5,7 @@
 %}
 
 %token <string> VAR PROP
-%token DOT LAMBDA LOLLI TENPAIR WITHPAIR UNIT STAR ONE LPAREN RPAREN COMMA COLON EOF EOL LETTEN LETAPP LETFST LETSND BE IN TENSOR OR WITH INL INR LESS GREATER CASE OF ARROW
+%token DOT LAMBDA LOLLI TENPAIR WITHPAIR LETMV UNIT STAR LETONE ONE LPAREN RPAREN COMMA COLON EOF EOL LETTEN LETAPP LETFST LETSND BE IN TENSOR OR WITH INL INR LESS GREATER CASE OF ARROW
 
 %start typEXP termEXP ctxtmEXP
 %type <Syntax.Typ.t> typEXP
@@ -49,10 +49,12 @@ term:
     | LESS term COMMA term GREATER { (PWithPair ($2 , $4)) }
     | CASE var OF INL LPAREN var RPAREN ARROW term COMMA INR LPAREN var RPAREN ARROW term
         { (PCase ($2 , ($6 , $9) , ($13 , $16)))}
-    | LETTEN term BE var IN term { (PLetten ($2 , $4 , $6)) }
-    | LETAPP term BE var term IN term { (PLetapp ($2 , ($4 , $5) , $7)) }
-    | LETFST term BE var IN term { (PLetfst ($2 , $4 , $6)) }
-    | LETSND term BE var IN term { (PLetsnd ($2 , $4 , $6)) }
+    | LETTEN term BE term IN term { (PLetten ($2 , $4 , $6)) }
+    | LETAPP var BE term IN term { (PLetapp ($2 , $4 , $6)) }
+    | LETFST term BE term IN term { (PLetfst ($2 , $4 , $6)) }
+    | LETSND term BE term IN term { (PLetsnd ($2 , $4 , $6)) }
+    | LETMV var BE term IN term { (PLetmv ($2 , $4, $6)) }
+    | LETONE term BE term IN term { (PLetone ($2 , $4 , $6))}
     | LPAREN term term RPAREN { (PApp ($2 , $3)) }
     | STAR { (PStar) }
     | INL LPAREN term RPAREN { (PInl ($3)) }

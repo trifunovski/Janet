@@ -13,6 +13,8 @@ rule exp_token = parse
   | "letapp" { LETAPP }
   | "letfst" { LETFST }
   | "letsnd" { LETSND }
+  | "letmv" { LETMV }
+  | "letone" { LETONE }
   | "case" { CASE }
   | "1" { ONE }
   | "=>" { ARROW }
